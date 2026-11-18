@@ -38,11 +38,15 @@ jobs:
             public/routes
           key: osm-v1-${{ github.run_id }}
           restore-keys: osm-v1-
-      # Non-fatal: anything missing is fetched live in the browser instead.
+      # Time-boxed and non-fatal: a rate-limited Overpass never holds up the
+      # deploy. Whatever is still missing loads live in the browser and is
+      # fetched again on the next deploy.
       - name: Fetch OSM roads and race lines
-        run: npm run fetch-roads || echo "::warning::Some OSM data could not be pre-fetched; it will load live in the browser"
-        timeout-minutes: 15
+        run: npm run fetch-roads -- --budget 150 || echo "::warning::Some OSM data could not be pre-fetched; it will load live in the browser"
+        timeout-minutes: 5
+        continue-on-error: true
       - name: Save OSM data
+        if: always()
         uses: actions/cache/save@v4
         with:
           path: |

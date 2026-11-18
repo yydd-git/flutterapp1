@@ -20,6 +20,9 @@
  *          --routes-out DIR  route output directory (default public/routes)
  *          --city ID    only this city (repeatable)
  *          --refresh    re-download everything
+ *          --budget S   stop starting new downloads after S seconds and use
+ *                       one short retry (for CI, so a rate-limited Overpass
+ *                       never holds up a deploy; the rest comes next time)
  *          --no-routes / --no-cities  skip a part
  */
 import { mkdir, writeFile, readFile, access } from 'node:fs/promises';
@@ -41,16 +44,19 @@ const refresh = args.includes('--refresh');
 const doCities = !args.includes('--no-cities');
 const doRoutes = !args.includes('--no-routes');
 const exists = (f) => access(f).then(() => true, () => false);
+const budget = Number(opt('budget', 0)) * 1000;
+const started = Date.now();
+const outOfTime = () => budget > 0 && Date.now() - started > budget;
 const only = args.flatMap((a, i) => (a === '--city' ? [args[i + 1]] : []));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function withRetry(fn, tries = 4) {
+async function withRetry(fn, tries = budget ? 2 : 4) {
   for (let i = 1; ; i++) {
     try {
       return await fn();
     } catch (err) {
       if (i >= tries) throw err;
-      const wait = [20, 45, 90][i - 1] * 1000; // rate-limit slots free up within a minute or two
+      const wait = (budget ? [15] : [20, 45, 90])[i - 1] * 1000; // rate-limit slots free up within a minute or two
       console.warn(`  retry ${i}/${tries - 1} in ${wait / 1000}s: ${err.message}`);
       await sleep(wait);
     }
@@ -70,6 +76,11 @@ for (const city of doCities ? CITIES : []) {
   const keys = cellsAround(city.lng, city.lat, radius);
   if (!refresh && keys.every((k) => cells.has(k))) {
     console.log(`${city.name}: already have ${keys.length} cells, skipping`);
+    continue;
+  }
+  if (outOfTime()) {
+    console.log(`${city.name}: time budget used up, leaving for the next run`);
+    failures++;
     continue;
   }
   const boxes = keys.map(cellBounds);
@@ -108,6 +119,11 @@ for (const route of doRoutes ? ROUTES : []) {
   const file = join(routesDir, `${route.id}.json`);
   if (!refresh && (await exists(file))) {
     console.log(`Route ${route.name}: already built, skipping`);
+    continue;
+  }
+  if (outOfTime()) {
+    console.log(`Route ${route.name}: time budget used up, leaving for the next run`);
+    routeFailures++;
     continue;
   }
   process.stdout.write(`Route ${route.name} … `);
