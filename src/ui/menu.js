@@ -5,6 +5,8 @@
 import { CITIES, CAMERA } from '../config.js';
 import { CAR_TYPES, CAR_ORDER, carRatings } from '../cars/carTypes.js';
 import { getCarSprite } from '../cars/sprites.js';
+import { ROUTES, SPRINT_METRES, routeById } from '../race/routes.js';
+import { topTimes, formatTime } from '../race/leaderboard.js';
 import { TiltInput } from '../input/tilt.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -52,12 +54,14 @@ export class Menu {
         <div class="car-detail"></div>
 
         <div class="modes">
+          <button class="go resume" data-mode="resume" hidden>Resume</button>
           <button class="go" data-mode="free">Free Drive</button>
-          <button class="go" disabled title="Arrives in Phase 3">Race <small>soon</small></button>
+          <button class="go" data-mode="race">Race</button>
         </div>
         <button class="link" data-open="settings">⚙ Controls &amp; settings</button>
       </div>
-      <div class="panel settings" hidden></div>`;
+      <div class="panel settings" hidden></div>
+      <div class="panel race" hidden></div>`;
 
     this.root.querySelectorAll('[data-city]').forEach((b) =>
       b.addEventListener('click', () => {
@@ -78,6 +82,8 @@ export class Menu {
     this._renderCarDetail();
     this._drawCarIcons();
     this.root.querySelector('[data-mode="free"]').addEventListener('click', () => this.cb.onStart('free'));
+    this.root.querySelector('[data-mode="resume"]').addEventListener('click', () => this.cb.onResume());
+    this.root.querySelector('[data-mode="race"]').addEventListener('click', () => this.showRace());
     this.root.querySelector('[data-open="settings"]').addEventListener('click', () => this.showSettings());
   }
 
@@ -150,6 +156,10 @@ export class Menu {
       <div class="choices">
         ${opt('showTouch', 'auto', 'Auto')}${opt('showTouch', 'on', 'Always')}${opt('showTouch', 'off', 'Hidden')}
       </div>
+      <h2>Traffic</h2>
+      <div class="choices">
+        ${opt('traffic', 'off', 'Empty roads')}${opt('traffic', 'normal', 'Normal')}${opt('traffic', 'busy', 'Busy bazaar')}
+      </div>
       <h2>Buildings</h2>
       <div class="choices">
         ${opt('buildings', 'flat', 'Flat roofs (fastest)')}${opt('buildings', '3d', '3D blocks')}
@@ -180,6 +190,80 @@ export class Menu {
     panel.querySelector('[data-close]').addEventListener('click', () => {
       panel.hidden = true;
       this.root.querySelector('.start').hidden = false;
+    });
+  }
+
+  /* ---------------- race setup ---------------- */
+
+  showRace() {
+    const s = this.settings;
+    const panel = this.root.querySelector('.race');
+    const route = routeById(s.raceRoute) || ROUTES[0];
+    s.raceRoute = route.id;
+    const circuit = route.kind === 'circuit';
+    const board = circuit ? `${route.id}:laps${s.raceLaps}` : `${route.id}:${s.raceVariant}`;
+    const best = topTimes(board, 3);
+    const opt = (name, value, label) =>
+      `<button class="choice ${String(s[name]) === String(value) ? 'sel' : ''}" data-rset="${name}" data-val="${value}">${label}</button>`;
+    panel.innerHTML = `
+      <h2>Route</h2>
+      <div class="routes">
+        ${ROUTES.map((r) => `
+          <button class="route-card ${r.id === route.id ? 'sel' : ''}" data-route="${r.id}">
+            <b>${esc(r.name)}</b><small>${esc(r.sub)}</small>
+            <span class="km">${r.kind === 'circuit' ? `~${r.approxKm} km lap` : `~${r.approxKm} km`}</span>
+          </button>`).join('')}
+      </div>
+      <div class="race-opts">
+        <div>
+          <h2>${circuit ? 'Laps' : 'Length'}</h2>
+          <div class="choices">
+            ${circuit
+              ? [2, 3, 5].map((n) => opt('raceLaps', n, `${n} laps`)).join('')
+              : opt('raceVariant', 'sprint', `Sprint · ${SPRINT_METRES / 1000} km`) + opt('raceVariant', 'full', 'Full route')}
+          </div>
+        </div>
+        <div>
+          <h2>Opponents</h2>
+          <div class="choices">${opt('raceOpponents', 3, '3 AI racers')}${opt('raceOpponents', 0, 'Time trial')}</div>
+        </div>
+      </div>
+      <h2>Best times</h2>
+      <ol class="best">${best.map((b) => `<li>${formatTime(b.time)} <small>${esc(b.carName || b.car)} · ${esc(b.date)}</small></li>`).join('') || '<li class="none">No times yet. Set the first one!</li>'}</ol>
+      <div class="modes">
+        <button class="go" data-race="start">Start race</button>
+        <button class="go alt" data-race="back">Back</button>
+      </div>`;
+    panel.hidden = false;
+    this.root.querySelector('.start').hidden = true;
+    panel.querySelectorAll('[data-route]').forEach((b) =>
+      b.addEventListener('click', () => {
+        s.raceRoute = b.dataset.route;
+        this.cb.onSettings('race');
+        this.showRace();
+      })
+    );
+    panel.querySelectorAll('[data-rset]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const v = b.dataset.val;
+        s[b.dataset.rset] = /^\d+$/.test(v) ? Number(v) : v;
+        this.cb.onSettings('race');
+        this.showRace();
+      })
+    );
+    panel.querySelector('[data-race="back"]').addEventListener('click', () => {
+      panel.hidden = true;
+      this.root.querySelector('.start').hidden = false;
+    });
+    panel.querySelector('[data-race="start"]').addEventListener('click', () => {
+      panel.hidden = true;
+      this.root.querySelector('.start').hidden = false;
+      this.cb.onStartRace({
+        routeId: s.raceRoute,
+        variant: s.raceVariant,
+        laps: s.raceLaps,
+        opponents: s.raceOpponents,
+      });
     });
   }
 
@@ -216,8 +300,10 @@ export class Menu {
   show() {
     this.root.hidden = false;
     this.topbar.hidden = true;
-    const startBtn = this.root.querySelector('[data-mode="free"]');
-    startBtn.textContent = this.cb.isRunning?.() ? 'Resume' : 'Free Drive';
+    const running = this.cb.isRunning?.(); // 'free' | 'race' | null
+    const resume = this.root.querySelector('[data-mode="resume"]');
+    resume.hidden = !running;
+    resume.textContent = running === 'race' ? 'Resume race' : 'Resume';
   }
 
   hide() {

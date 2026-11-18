@@ -8,7 +8,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // doesn't exist after bundling. Ship the worker as a hashed asset instead.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { PERF } from '../config.js';
-import { buildGameStyle, ROADS_SOURCE, TILE_ROAD_LAYERS, BUILDING_FLAT_LAYERS, BUILDING_3D_LAYERS } from './gameStyle.js';
+import { buildGameStyle, ROADS_SOURCE, ROUTE_SOURCE, TILE_ROAD_LAYERS, BUILDING_FLAT_LAYERS, BUILDING_3D_LAYERS } from './gameStyle.js';
 
 setWorkerUrl(new URL(workerUrl, import.meta.url).href);
 
@@ -88,6 +88,16 @@ export class MapView {
     }
     this._pendingRoads = null;
     this.map.getSource(ROADS_SOURCE)?.setData({ type: 'FeatureCollection', features });
+  }
+
+  /** Draw the race line ([lng, lat] list), or clear it with null. */
+  setRoute(coords) {
+    if (!this._loaded) {
+      this.ready.then(() => this.setRoute(coords));
+      return;
+    }
+    const features = coords ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } }] : [];
+    this.map.getSource(ROUTE_SOURCE)?.setData({ type: 'FeatureCollection', features });
   }
 
   /** Show the tiles' generic roads (used where real road data isn't loaded yet). */

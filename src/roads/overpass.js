@@ -13,6 +13,7 @@ export const CELL_DEG = 0.02;
 
 export const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
 ];
 
@@ -75,9 +76,12 @@ export function cellsInBox(w, s, e, n) {
 
 /* ---------------- query & parse ---------------- */
 
-/** Overpass QL for every drivable road intersecting a bbox. */
-export function buildQuery({ s, w, n, e }, timeout = 25) {
-  const types = Object.keys(ROAD_CLASSES).join('|');
+/**
+ * Overpass QL for drivable roads intersecting a bbox.
+ * @param {string[]} [classes] highway classes (default: all drivable)
+ */
+export function buildQuery({ s, w, n, e }, timeout = 25, classes = Object.keys(ROAD_CLASSES)) {
+  const types = classes.join('|');
   const f = (v) => v.toFixed(5);
   return (
     `[out:json][timeout:${timeout}];` +
@@ -159,7 +163,7 @@ export function wayHalfWidth(way) {
  * rate limits (429/504).
  */
 export async function fetchOverpass(query, { endpoints = OVERPASS_ENDPOINTS, signal, fetchImpl = fetch } = {}) {
-  let lastErr;
+  const errors = [];
   for (const url of endpoints) {
     try {
       const res = await fetchImpl(url, {
@@ -172,8 +176,8 @@ export async function fetchOverpass(query, { endpoints = OVERPASS_ENDPOINTS, sig
       return await res.json();
     } catch (err) {
       if (signal?.aborted) throw err;
-      lastErr = err;
+      errors.push(err.message.includes(new URL(url).host) ? err.message : `${new URL(url).host}: ${err.message}`);
     }
   }
-  throw lastErr;
+  throw new Error(errors.join('; '));
 }

@@ -22,6 +22,8 @@ export class RoadNetwork {
     this.grid = new Map();
     this.wayIds = new Set();
     this.loadedCells = new Set();
+    /** Junction graph for traffic: "lng,lat" → { x, y, segs: [] } */
+    this.nodes = new Map();
     this._stamp = 0;
     this._p = { x: 0, y: 0 };
     this._ll = [0, 0];
@@ -38,7 +40,6 @@ export class RoadNetwork {
    * @returns {object[]} the ways that were new
    */
   addWays(ways) {
-    const p = this._p;
     const added = [];
     for (const w of ways) {
       if (this.wayIds.has(w.id)) continue;
@@ -52,25 +53,37 @@ export class RoadNetwork {
         half: wayHalfWidth(w),
         unpaved: !!w.u,
         rank: (ROAD_CLASSES[w.t] || ROAD_CLASSES.road).rank,
+        oneway: !!w.o,
       };
       const c = w.c;
-      this.frame.toLocal(c[0], c[1], p);
-      let ax = p.x, ay = p.y;
+      let na = this._node(c[0], c[1]);
       for (let k = 2; k < c.length; k += 2) {
-        this.frame.toLocal(c[k], c[k + 1], p);
-        const bx = p.x, by = p.y;
-        const dx = bx - ax, dy = by - ay;
+        const nb = this._node(c[k], c[k + 1]);
+        const dx = nb.x - na.x, dy = nb.y - na.y;
         const len2 = dx * dx + dy * dy;
         if (len2 > 0.01) {
-          const seg = { ax, ay, bx, by, dx, dy, len2, way: info, q: 0 };
+          const seg = { ax: na.x, ay: na.y, bx: nb.x, by: nb.y, dx, dy, len2, len: Math.sqrt(len2), way: info, na, nb, q: 0 };
+          na.segs.push(seg);
+          nb.segs.push(seg);
           this.segs.push(seg);
           this._index(seg);
+          na = nb;
         }
-        ax = bx;
-        ay = by;
       }
     }
     return added;
+  }
+
+  /** Shared graph node for a coordinate (OSM ways meet at identical points). */
+  _node(lng, lat) {
+    const key = lng + ',' + lat;
+    let n = this.nodes.get(key);
+    if (!n) {
+      const p = this.frame.toLocal(lng, lat, this._p);
+      n = { x: p.x, y: p.y, segs: [] };
+      this.nodes.set(key, n);
+    }
+    return n;
   }
 
   _index(seg) {

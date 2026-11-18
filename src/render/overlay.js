@@ -170,6 +170,52 @@ export class Overlay {
     }
   }
 
+  /**
+   * Checkpoint gate across the road at (x, y) facing `heading`: two posts
+   * and a banner. The finish gate is chequered. Skipped if behind the
+   * camera.
+   */
+  drawGate(x, y, heading, halfWidth, { finish = false, active = true, viewX, viewY, viewHeading }) {
+    const fx = Math.sin(viewHeading), fy = Math.cos(viewHeading);
+    if ((x - viewX) * fx + (y - viewY) * fy < -20) return;
+    const { ctx } = this;
+    const lx = -Math.cos(heading), ly = Math.sin(heading); // left
+    const ux = Math.sin(heading), uy = Math.cos(heading); // forward
+    const w = halfWidth + 1.2, d = 0.9; // banner depth (m)
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const quad = (ax, ay, bx, by, depth, colour) => {
+      const p1 = this._proj(ax - ux * depth, ay - uy * depth), p2 = this._proj(bx - ux * depth, by - uy * depth);
+      const p3 = this._proj(bx + ux * depth, by + uy * depth), p4 = this._proj(ax + ux * depth, ay + uy * depth);
+      ctx.fillStyle = colour;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p3.x, p3.y);
+      ctx.lineTo(p4.x, p4.y);
+      ctx.closePath();
+      ctx.fill();
+    };
+    const ax = x + lx * w, ay = y + ly * w, bx = x - lx * w, by = y - ly * w;
+    if (finish) {
+      const n = 12;
+      for (let i = 0; i < n; i++) {
+        const t0 = i / n, t1 = (i + 1) / n;
+        for (const row of [-1, 1]) {
+          const c = (i + (row > 0 ? 1 : 0)) % 2 ? '#111' : '#fafafa';
+          const o = row * d * 0.5;
+          quad(ax + (bx - ax) * t0 + ux * o, ay + (by - ay) * t0 + uy * o,
+            ax + (bx - ax) * t1 + ux * o, ay + (by - ay) * t1 + uy * o, d * 0.5, c);
+        }
+      }
+    } else {
+      quad(ax, ay, bx, by, d * 0.5, active ? 'rgba(255,153,51,0.92)' : 'rgba(255,255,255,0.35)');
+      // White chevrons across the banner point the way
+      if (active) quad(x + lx * 0.6, y + ly * 0.6, x - lx * 0.6, y - ly * 0.6, d * 0.5, '#fff');
+    }
+    // Posts
+    for (const [px, py] of [[ax, ay], [bx, by]]) quad(px + lx * 0.35, py + ly * 0.35, px - lx * 0.35, py - ly * 0.35, 0.35, '#2b2b2b');
+  }
+
   /** Draw a vehicle (physics object + render info). */
   drawCar(car, colour) {
     const { ctx } = this;

@@ -14,6 +14,7 @@
  */
 
 export const ROADS_SOURCE = 'game-roads';
+export const ROUTE_SOURCE = 'race-route';
 export const TILE_ROAD_LAYERS = ['tile-road-casing', 'tile-road'];
 export const BUILDING_FLAT_LAYERS = ['building-shadow', 'building-roof', 'building-edge'];
 export const BUILDING_3D_LAYERS = ['building-3d'];
@@ -96,6 +97,7 @@ export function buildGameStyle({ lat, buildings3d = false }) {
         buffer: 64,
         tolerance: 0.2,
       },
+      [ROUTE_SOURCE]: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     },
     layers: [
       { id: 'ground', type: 'background', paint: { 'background-color': P.ground } },
@@ -196,6 +198,18 @@ export function buildGameStyle({ lat, buildings3d = false }) {
           'line-width': W(0.2),
           'line-dasharray': [14, 22],
         },
+      },
+
+      /* ---------- race line (only during races) ---------- */
+      {
+        id: 'race-line-glow', type: 'line', source: ROUTE_SOURCE,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#ff9933', 'line-opacity': 0.22, 'line-width': W(7) },
+      },
+      {
+        id: 'race-line', type: 'line', source: ROUTE_SOURCE,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#ff9933', 'line-opacity': 0.75, 'line-width': W(1.2), 'line-dasharray': [3, 2] },
       },
 
       /* ---------- buildings ---------- */

@@ -4,9 +4,10 @@ A mobile-first browser driving game on the real roads of Chhattisgarh, India.
 Built with MapLibre GL JS, free OpenStreetMap vector tiles from OpenFreeMap,
 and plain JavaScript (Vite). No paid APIs, no keys.
 
-> **Status: Phase 2 of 4.** Drive four classic-inspired cars on real OpenStreetMap roads
-> in six cities. You spawn on the road, road names show as you drive, and road edges,
-> off-road grip and damage all work. Traffic, races and the PWA come in later phases.
+> **Status: Phase 3 of 4.** Drive four classic-inspired cars on real OpenStreetMap roads
+> in six cities, among auto-rickshaws, buses, trucks and roadside cows. Race AI opponents or the clock
+> on real routes (Raipur → Bhilai on NH-53, Raipur → Bilaspur, Jagdalpur → Chitrakote Falls) or a
+> Raipur city circuit. Sound, effects and the installable PWA come in Phase 4.
 
 **Play:** https://yydd-git.github.io/flutterapp1/
 
@@ -58,6 +59,44 @@ a map style:
   farmland, parks, railways, and a few landmark names. There are no map labels or shop icons.
 - Before a road cell's data arrives, the tiles' own roads show as plain asphalt.
 
+## Traffic
+
+Auto-rickshaws, buses, trucks and cows (`src/ai/traffic.js`) use the real road graph around you:
+- **Vehicles** keep left and mostly go straight on at junctions. They follow one-way streets, slow for bends,
+  and brake and honk for anything in their lane, cows included.
+- **Cows** stand at the roadside or amble across. They trot off if you nudge them.
+- **Spawning:** vehicles appear out of sight 110–280 m away and are recycled beyond 360 m, from a fixed
+  pool of 28. This keeps the roads busy for little CPU.
+- **Collisions** exchange momentum by mass: a truck barely notices you, a rickshaw gets shoved.
+- **Density:** choose under **Controls & settings → Traffic** (Empty roads / Normal / Busy bazaar).
+
+## Race mode
+
+Tap **Race** and pick a route:
+
+| Route | Type | Length |
+|---|---|---|
+| Raipur → Bhilai (NH-53 via Kumhari) | point to point | ~26 km, or an 8 km Sprint |
+| Raipur → Bilaspur (NH-130 via Simga) | point to point | ~115 km, or an 8 km Sprint |
+| Jagdalpur → Chitrakote Falls (via Lohandiguda) | point to point | ~40 km, or an 8 km Sprint |
+| Raipur City Circuit | laps (2, 3 or 5) | ~6 km lap |
+
+- **The race line** follows real roads. It's calculated with A* over OSM roads between the route's
+  waypoints, so it follows the actual highways, and one-way carriageways keep it on the left
+  (`src/race/routing.js`). The deploy pre-builds each line into `public/routes/`. If a line is missing,
+  the game downloads that area from Overpass and plans the route in your browser, then saves it on
+  your device.
+- **Checkpoints** are gates across the road, and the last one is the chequered finish. Progress is
+  measured along the race line, so cutting corners doesn't skip gates.
+- **AI opponents** (3, or a solo Time trial) drive the line in their own cars. They brake before bends,
+  overtake traffic on the right and adjust their pace to keep races close (`src/ai/racers.js`).
+- **HUD:** race position, lap or distance to go, checkpoint count and timer, a 3-2-1-GO countdown,
+  an off-route warning (tap ⟲ to return to the line), and a results table.
+- **Leaderboard:** the best times per route and length are saved on your device (localStorage).
+
+**Mini-map** (top right, in every mode): a heading-up view of nearby roads, the race line, the next
+checkpoint, opponents and traffic.
+
 ## Cars
 
 | Car | Inspired by | Character |
@@ -74,7 +113,8 @@ All are original designs, with no real brand names or logos. Menu stat bars are 
 The world is split into ~2 km cells (0.02°).
 1. **Pre-baked:** `npm run fetch-roads` makes one Overpass query per start city and writes
    per-cell JSON to `public/roads/`. The GitHub Pages workflow runs this before every
-   deploy, so city centres load instantly from static files.
+   deploy and keeps the results between runs, so it only fetches what's missing. That matters
+   because the public Overpass servers often rate-limit GitHub's shared build machines.
 2. **Live:** anywhere else, the game fetches cells from the
    [Overpass API](https://overpass-api.de) in the browser, one request at a time and
    with a mirror fallback, as you drive towards them.
@@ -115,6 +155,14 @@ src/
   map/mapView.js     MapLibre setup, style trimming, offline fallback
   physics/vehicle.js arcade car model (no DOM; unit-tested, reused for AI later)
   physics/roadConstraint.js  surfaces, verges, wall collisions
+  physics/collide.js circle-chain vehicle collisions with mass exchange
+  ai/traffic.js      pooled traffic agents on the road graph
+  ai/racers.js       race opponents: corner planning, overtaking, rubber-banding
+  race/routes.js     route definitions (waypoints, road classes)
+  race/routing.js    road graph + A* + simplification (browser and Node)
+  race/routePath.js  resampled race line: lookups, windowed projection, corner radii
+  race/raceManager.js grid → countdown → racing → results
+  race/leaderboard.js best times in localStorage
   roads/overpass.js  cells, Overpass query/parse (shared by browser + Node script)
   roads/roadNetwork.js  spatial grid index: nearest road edge, spawn snapping
   roads/roadLoader.js   pre-baked cells first, live Overpass fallback
@@ -122,8 +170,8 @@ src/
   cars/sprites.js    procedural top-down sprites, cached per colour
   render/overlay.js  2D canvas drawn in sync with each map frame
   input/             keyboard, touch (multi-touch pointer events), tilt, merger
-  ui/                HUD speedometer + damage, menus, car picker, top bar
-scripts/fetch-roads.mjs  build-time road pre-fetch
+  ui/                HUD speedometer + damage, mini-map, race HUD, menus, top bar
+scripts/fetch-roads.mjs  build-time pre-fetch of city roads and race lines (incremental)
 ```
 
 ### Why 2D sprites instead of Three.js
@@ -148,7 +196,7 @@ you can still drive. Offline tile caching arrives with the PWA in Phase 4.
 ## Roadmap
 1. ✅ Map + one drivable car in Raipur + touch controls
 2. ✅ Road snapping, road edges and off-road behaviour from OSM data (pre-baked plus live), all four cars
-3. AI traffic (auto-rickshaws, buses, trucks, cows) and race mode (checkpoints, AI, leaderboard)
+3. ✅ AI traffic (auto-rickshaws, buses, trucks, cows) and race mode (checkpoints, AI, leaderboard, mini-map)
 4. Polish: sound, skid marks, day/night, monsoon rain, PWA offline caching
 
 ## Credits & licence
