@@ -162,14 +162,14 @@ export function wayHalfWidth(way) {
  * POST a query to Overpass, falling back across mirrors on errors and
  * rate limits (429/504).
  */
-export async function fetchOverpass(query, { endpoints = OVERPASS_ENDPOINTS, signal, fetchImpl = fetch } = {}) {
+export async function fetchOverpass(query, { endpoints = OVERPASS_ENDPOINTS, signal, fetchImpl = fetch, headers = {} } = {}) {
   const errors = [];
   for (const url of endpoints) {
     try {
       const res = await fetchImpl(url, {
         method: 'POST',
         body: 'data=' + encodeURIComponent(query),
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json', ...headers },
         signal,
       });
       if (!res.ok) throw new Error(`Overpass ${res.status} from ${new URL(url).host}`);

@@ -49,6 +49,9 @@ const started = Date.now();
 const outOfTime = () => budget > 0 && Date.now() - started > budget;
 const only = args.flatMap((a, i) => (a === '--city' ? [args[i + 1]] : []));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// overpass-api.de answers 406 to generic clients (e.g. Node's default "node"
+// User-Agent), so identify this build script. Browsers send their own.
+const OVERPASS_OPTS = { headers: { 'User-Agent': 'chhattisgarh-road-rally-prefetch/1.0 (OSM game data build)' } };
 
 async function withRetry(fn, tries = budget ? 2 : 4) {
   for (let i = 1; ; i++) {
@@ -90,7 +93,7 @@ for (const city of doCities ? CITIES : []) {
   };
   process.stdout.write(`${city.name}: ${keys.length} cells … `);
   try {
-    const json = await withRetry(() => fetchOverpass(buildQuery(bbox, 120)));
+    const json = await withRetry(() => fetchOverpass(buildQuery(bbox, 120), OVERPASS_OPTS));
     const ways = parseOverpass(json);
     const byCell = splitIntoCells(ways, keys);
     let bytes = 0;
@@ -128,7 +131,7 @@ for (const route of doRoutes ? ROUTES : []) {
   }
   process.stdout.write(`Route ${route.name} … `);
   try {
-    const json = await withRetry(() => fetchOverpass(buildQuery(routeBBox(route), 180, route.classes)));
+    const json = await withRetry(() => fetchOverpass(buildQuery(routeBBox(route), 180, route.classes), OVERPASS_OPTS));
     const ways = parseOverpass(json);
     const { coords, length } = routeThrough(buildGraph(ways), route.waypoints, route.kind === 'circuit');
     const simple = simplify(coords, 1.5);
