@@ -3,7 +3,8 @@
  * Plain DOM, no framework; it talks to the game through callbacks only.
  */
 import { CITIES, CAMERA } from '../config.js';
-import { CAR_TYPES } from '../cars/carTypes.js';
+import { CAR_TYPES, CAR_ORDER, carRatings } from '../cars/carTypes.js';
+import { getCarSprite } from '../cars/sprites.js';
 import { TiltInput } from '../input/tilt.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -28,7 +29,6 @@ export class Menu {
 
   _renderStart() {
     const s = this.settings;
-    const car = CAR_TYPES[s.car];
     this.root.innerHTML = `
       <div class="panel start">
         <h1>Chhattisgarh <span>Road Rally</span></h1>
@@ -43,14 +43,13 @@ export class Menu {
         </div>
 
         <h2>Car</h2>
-        <div class="car-pick">
-          <div><b>${esc(car.name)}</b><small>${esc(car.blurb)}</small></div>
-          <div class="swatches">
-            ${car.colours.map((col, i) => `
-              <button class="swatch ${i === s.colour ? 'sel' : ''}" data-colour="${i}"
-                style="background:${col}" aria-label="Colour ${i + 1}"></button>`).join('')}
-          </div>
+        <div class="cars">
+          ${CAR_ORDER.map((id) => `
+            <button class="car-card ${id === s.car ? 'sel' : ''}" data-car="${id}" aria-label="${esc(CAR_TYPES[id].name)}">
+              <canvas width="52" height="124"></canvas>${esc(CAR_TYPES[id].name)}
+            </button>`).join('')}
         </div>
+        <div class="car-detail"></div>
 
         <div class="modes">
           <button class="go" data-mode="free">Free Drive</button>
@@ -64,18 +63,65 @@ export class Menu {
       b.addEventListener('click', () => {
         s.city = b.dataset.city;
         this._select(b, '[data-city]');
-        this.cb.onSettings();
+        this.cb.onSettings('city');
       })
     );
-    this.root.querySelectorAll('[data-colour]').forEach((b) =>
+    this.root.querySelectorAll('[data-car]').forEach((b) =>
       b.addEventListener('click', () => {
-        s.colour = Number(b.dataset.colour);
-        this._select(b, '[data-colour]');
-        this.cb.onSettings();
+        s.car = b.dataset.car;
+        this._select(b, '[data-car]');
+        this._renderCarDetail();
+        this._drawCarIcons();
+        this.cb.onSettings('car');
       })
     );
+    this._renderCarDetail();
+    this._drawCarIcons();
     this.root.querySelector('[data-mode="free"]').addEventListener('click', () => this.cb.onStart('free'));
     this.root.querySelector('[data-open="settings"]').addEventListener('click', () => this.showSettings());
+  }
+
+  /** Small sprite previews on each car card, in the chosen colour. */
+  _drawCarIcons() {
+    this.root.querySelectorAll('[data-car]').forEach((b) => {
+      const spec = CAR_TYPES[b.dataset.car];
+      const colour = spec.colours[b.dataset.car === this.settings.car ? this.settings.colour : 0] || spec.colours[0];
+      const sprite = getCarSprite(spec, colour);
+      const cv = b.querySelector('canvas');
+      const ctx = cv.getContext('2d');
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      // Fit the sprite (metres) into the card canvas, all cars at one scale.
+      const scale = cv.height / 4.6;
+      const w = sprite.w * scale, h = sprite.h * scale;
+      ctx.drawImage(sprite.canvas, (cv.width - w) / 2, (cv.height - h) / 2, w, h);
+    });
+  }
+
+  /** Blurb, stat bars and colour swatches for the selected car. */
+  _renderCarDetail() {
+    const s = this.settings;
+    const car = CAR_TYPES[s.car];
+    if (s.colour >= car.colours.length) s.colour = 0;
+    const box = this.root.querySelector('.car-detail');
+    box.innerHTML = `
+      <div><b>${esc(car.name)}</b><p class="blurb">${esc(car.blurb)}</p></div>
+      <div class="swatches">
+        ${car.colours.map((col, i) => `
+          <button class="swatch ${i === s.colour ? 'sel' : ''}" data-colour="${i}"
+            style="background:${col}" aria-label="Colour ${i + 1}"></button>`).join('')}
+      </div>
+      <div class="stats">
+        ${Object.entries(carRatings(car)).map(([k, v]) =>
+          `<span>${k}</span><span class="bar"><i style="width:${Math.round(v * 100)}%"></i></span>`).join('')}
+      </div>`;
+    box.querySelectorAll('[data-colour]').forEach((b) =>
+      b.addEventListener('click', () => {
+        s.colour = Number(b.dataset.colour);
+        box.querySelectorAll('[data-colour]').forEach((x) => x.classList.toggle('sel', x === b));
+        this._drawCarIcons();
+        this.cb.onSettings('colour');
+      })
+    );
   }
 
   _select(btn, selector) {
@@ -103,6 +149,14 @@ export class Menu {
       <h2>On-screen controls</h2>
       <div class="choices">
         ${opt('showTouch', 'auto', 'Auto')}${opt('showTouch', 'on', 'Always')}${opt('showTouch', 'off', 'Hidden')}
+      </div>
+      <h2>Buildings</h2>
+      <div class="choices">
+        ${opt('buildings', 'flat', 'Flat roofs (fastest)')}${opt('buildings', '3d', '3D blocks')}
+      </div>
+      <h2>Road edges</h2>
+      <div class="choices">
+        ${opt('boundaries', 'walls', 'Stay near roads')}${opt('boundaries', 'free', 'Drive anywhere')}
       </div>
       <label class="check"><input type="checkbox" data-check="invertTilt" ${s.invertTilt ? 'checked' : ''}> Invert tilt</label>
       <p class="keys">Keyboard: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows to drive,

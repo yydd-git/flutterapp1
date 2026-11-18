@@ -27,6 +27,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # Pre-bake real road data for the six start cities from Overpass.
+      # Non-fatal: if Overpass is down, the game fetches roads live instead.
+      - name: Fetch OSM roads
+        run: npm run fetch-roads || echo "::warning::Road pre-fetch failed; roads will load live in the browser"
+        timeout-minutes: 10
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

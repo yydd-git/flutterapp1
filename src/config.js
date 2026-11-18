@@ -3,15 +3,6 @@
  * performance knobs. Everything tunable lives here so modules stay generic.
  */
 
-/** OpenFreeMap: free OSM vector tiles, no API key. */
-export const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
-
-/** Shown in the attribution control (OSM licence requires it to be visible). */
-export const ATTRIBUTION =
-  '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> ' +
-  '<a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">© OpenMapTiles</a> ' +
-  'Data <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>';
-
 /**
  * Start locations. Coordinates are central squares / main roads; Phase 2
  * snaps the spawn point to the nearest real road from OSM.

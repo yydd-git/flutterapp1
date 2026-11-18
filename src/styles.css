@@ -210,8 +210,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .choice small { display: block; font-size: 11px; color: var(--muted); }
 .choice.sel { border-color: var(--saffron); background: rgba(255, 153, 51, 0.18); }
 .choice:disabled { opacity: 0.4; cursor: not-allowed; }
-.car-pick { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
-.car-pick small { display: block; color: var(--muted); font-size: 12px; }
 .swatches { display: flex; gap: 6px; flex-shrink: 0; }
 .swatch { width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.3); }
 .swatch.sel { border-color: var(--saffron); box-shadow: 0 0 0 2px var(--saffron); }
@@ -277,4 +275,67 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin:
   .pedal.gas { height: 104px; }
   .pedal.drift { width: 52px; height: 52px; }
   .speedo { top: calc(env(safe-area-inset-top) + 56px); transform: translateX(-50%) scale(0.6); }
+}
+
+/* ---------- Phase 2: damage bar ---------- */
+.damage {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  width: 64px;
+  height: 5px;
+  margin-left: -32px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.damage.show { opacity: 1; }
+.damage i { display: block; height: 100%; width: 0; transition: width 0.2s; }
+
+/* ---------- Phase 2: car picker ---------- */
+.cars { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.car-card {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+}
+.car-card canvas { width: 26px; height: 62px; transform: rotate(90deg); margin: -16px 0; }
+.car-card.sel { border-color: var(--saffron); background: rgba(255, 153, 51, 0.16); }
+.car-detail { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 14px; margin-top: 8px; align-items: start; }
+.car-detail .blurb { color: var(--muted); font-size: 12px; margin: 2px 0 0; }
+.stats { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; font-size: 11px; color: var(--muted); align-items: center; grid-column: 1 / -1; }
+.stats .bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.stats .bar i { display: block; height: 100%; background: var(--saffron); }
+@media (max-width: 520px) { .cars { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Short landscape screens (phones): two-column start menu so everything
+   fits without scrolling. Left: city + car; right: details + buttons. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .panel { padding: 12px 16px; }
+  .panel.start {
+    width: min(920px, 100%);
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    column-gap: 18px;
+    align-content: start;
+  }
+  .panel.start > * { grid-column: 1; }
+  .panel.start > .car-detail { grid-column: 2; grid-row: 1 / span 5; margin-top: 0; }
+  .panel.start > .modes { grid-column: 2; grid-row: 6; align-self: end; margin-top: 8px; }
+  .panel.start > .link { grid-column: 2; grid-row: 7; justify-self: start; }
+  .panel h1 { font-size: 20px; }
+  .panel h2 { margin: 8px 0 4px; }
+  .choice { padding: 5px 9px; min-height: 36px; }
+  .car-card { font-size: 11px; padding: 4px 2px; }
+  .car-detail { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .swatch { width: 26px; height: 26px; }
 }

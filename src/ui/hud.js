@@ -5,7 +5,7 @@
  */
 import { MPS_TO_KMH } from '../config.js';
 
-const MAX_KMH = 160;
+const MAX_KMH = 180;
 const START = Math.PI * 0.75; // gauge sweep: 135° → 405°
 const SWEEP = Math.PI * 1.5;
 
@@ -18,6 +18,7 @@ export class Hud {
         <canvas width="150" height="150"></canvas>
         <div class="speedo-readout"><span class="kmh">0</span><small>km/h</small></div>
         <div class="gear">D</div>
+        <div class="damage" title="Damage"><i></i></div>
       </div>
       <div class="toast" hidden></div>`;
     this.canvas = root.querySelector('canvas');
@@ -25,6 +26,8 @@ export class Hud {
     this.kmhEl = root.querySelector('.kmh');
     this.gearEl = root.querySelector('.gear');
     this.toastEl = root.querySelector('.toast');
+    this.damageEl = root.querySelector('.damage');
+    this.damageBar = root.querySelector('.damage i');
     this.lastKmh = -1;
     this.lastGear = '';
     this._setupCanvas();
@@ -51,7 +54,7 @@ export class Hud {
     for (let k = 0; k <= MAX_KMH; k += 10) {
       const a = START + (k / MAX_KMH) * SWEEP;
       const major = k % 20 === 0;
-      f.strokeStyle = k >= 120 ? '#ff6b4a' : '#e8e2d0';
+      f.strokeStyle = k >= 140 ? '#ff6b4a' : '#e8e2d0';
       f.lineWidth = major ? 2.5 : 1.2;
       f.beginPath();
       f.moveTo(c + Math.cos(a) * (r - (major ? 12 : 7)), c + Math.sin(a) * (r - (major ? 12 : 7)));
@@ -102,6 +105,16 @@ export class Hud {
       this.gearEl.textContent = gear;
       this.gearEl.classList.toggle('rev', gear === 'R');
     }
+  }
+
+  /** Damage 0..100: the bar fills green → saffron → red. */
+  setDamage(pct) {
+    const p = Math.round(pct);
+    if (p === this._dmg) return;
+    this._dmg = p;
+    this.damageBar.style.width = `${p}%`;
+    this.damageBar.style.background = p < 40 ? '#2e9e5b' : p < 75 ? '#ff9933' : '#d94032';
+    this.damageEl.classList.toggle('show', p > 0);
   }
 
   /** Short message at the top of the screen. */
