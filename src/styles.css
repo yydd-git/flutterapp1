@@ -1,0 +1,280 @@
+/* Chhattisgarh Road Rally: mobile-first, landscape-oriented UI. */
+
+:root {
+  --ink: #f4efe2;
+  --muted: #b9b2a0;
+  --panel: rgba(16, 20, 26, 0.88);
+  --line: rgba(255, 255, 255, 0.14);
+  --saffron: #ff9933;
+  --green: #2e9e5b;
+  --red: #d94032;
+  --pad: max(12px, env(safe-area-inset-left));
+  --pad-r: max(12px, env(safe-area-inset-right));
+  --pad-b: max(12px, env(safe-area-inset-bottom));
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #14181e;
+  color: var(--ink);
+  font: 15px/1.35 system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: none;
+}
+
+button { font: inherit; color: inherit; cursor: pointer; }
+[hidden] { display: none !important; }
+
+#map, #overlay { position: fixed; inset: 0; width: 100%; height: 100%; }
+#overlay { pointer-events: none; z-index: 1; }
+
+/* ---------- Attribution (must stay visible) ---------- */
+/* Bottom-centre, between the thumb controls, so it never hides the car. */
+.maplibregl-ctrl-bottom-left {
+  z-index: 3;
+  left: 50% !important;
+  transform: translateX(-50%);
+  bottom: max(2px, env(safe-area-inset-bottom)) !important;
+}
+.maplibregl-ctrl-attrib {
+  background: rgba(255, 255, 255, 0.72) !important;
+  font-size: 9px;
+  line-height: 1.3;
+  margin: 0 !important;
+  padding: 1px 6px !important;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.maplibregl-ctrl-attrib a { color: #333 !important; }
+
+/* ---------- HUD ---------- */
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+/* Speedometer sits top-centre: the car is in the lower half of the screen. */
+.speedo {
+  position: absolute;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + 6px);
+  transform: translateX(-50%) scale(0.8);
+  transform-origin: top center;
+  width: 150px;
+  height: 150px;
+}
+.speedo canvas { width: 150px; height: 150px; }
+.speedo-readout {
+  position: absolute;
+  inset: 70px 0 auto;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.speedo-readout .kmh { font-size: 28px; font-weight: 700; display: block; line-height: 1; }
+.speedo-readout small { color: var(--muted); font-size: 10px; letter-spacing: 0.1em; }
+.gear {
+  position: absolute;
+  left: 50%;
+  top: 40px;
+  transform: translateX(-50%);
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--green);
+}
+.gear.rev { color: var(--saffron); }
+.toast {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 136px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* ---------- Top bar ---------- */
+#topbar {
+  position: fixed;
+  z-index: 3;
+  top: calc(env(safe-area-inset-top) + 8px);
+  left: var(--pad);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+#topbar button {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 15px;
+}
+#topbar .place {
+  background: var(--panel);
+  padding: 0 12px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---------- Touch controls ---------- */
+#touch { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+.steer-zone, .pedal-zone { position: absolute; bottom: var(--pad-b); pointer-events: auto; }
+.steer-zone { left: var(--pad); display: flex; gap: 12px; }
+.pedal-zone { right: var(--pad-r); display: flex; gap: 10px; align-items: flex-end; }
+
+.pad, .pedal {
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  background: rgba(20, 24, 30, 0.6);
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
+  border-radius: 18px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  touch-action: none;
+  transition: transform 60ms, background 60ms;
+}
+.pad { width: 84px; height: 84px; font-size: 30px; }
+.pedal { width: 76px; height: 110px; font-size: 13px; }
+.pedal.gas { height: 132px; background: rgba(30, 130, 72, 0.75); }
+.pedal.brake { background: rgba(180, 48, 38, 0.72); }
+.pedal.drift { width: 64px; height: 64px; font-size: 11px; border-radius: 50%; background: rgba(200, 110, 20, 0.75); }
+.pressed { transform: scale(0.93); border-color: #fff; filter: brightness(1.35) saturate(1.4); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35); }
+
+/* Slide-stick steering covers the whole lower-left area. */
+.stick { display: none; position: relative; width: 38vw; max-width: 320px; height: 140px; touch-action: none; }
+.stick-track, .stick-knob { position: absolute; left: var(--ox, 50%); top: var(--oy, 50%); transform: translate(-50%, -50%); }
+.stick-track { width: 160px; height: 10px; margin-left: 0; border-radius: 5px; background: rgba(255, 255, 255, 0.25); }
+.stick-knob {
+  width: 62px; height: 62px; margin: -31px 0 0 -31px; transform: none;
+  border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.6); background: rgba(20, 24, 30, 0.6);
+}
+.stick:not(.active) .stick-track, .stick:not(.active) .stick-knob { opacity: 0.45; }
+.steer-zone[data-mode='joystick'] .pad { display: none; }
+.steer-zone[data-mode='joystick'] .stick { display: block; }
+.steer-zone[data-mode='tilt'] { display: none; }
+
+/* Leave room for the touch controls under the speedometer on small screens. */
+@media (max-width: 700px) and (orientation: landscape) {
+  .pad { width: 70px; height: 70px; }
+  .pedal { width: 64px; height: 96px; }
+  .pedal.gas { height: 116px; }
+  .speedo { transform: translateX(-50%) scale(0.66); }
+  .toast { top: calc(env(safe-area-inset-top) + 110px); }
+}
+
+/* ---------- Menus ---------- */
+#menu {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 16px var(--pad-r) 16px var(--pad);
+  background: linear-gradient(90deg, rgba(10, 12, 16, 0.78), rgba(10, 12, 16, 0.25));
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+.panel {
+  width: min(560px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 18px 20px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+.panel h1 { margin: 0; font-size: 24px; letter-spacing: 0.02em; }
+.panel h1 span { color: var(--saffron); }
+.panel h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin: 14px 0 6px; }
+.tag { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.choice {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 7px 11px;
+  min-height: 40px;
+}
+.choice small { display: block; font-size: 11px; color: var(--muted); }
+.choice.sel { border-color: var(--saffron); background: rgba(255, 153, 51, 0.18); }
+.choice:disabled { opacity: 0.4; cursor: not-allowed; }
+.car-pick { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.car-pick small { display: block; color: var(--muted); font-size: 12px; }
+.swatches { display: flex; gap: 6px; flex-shrink: 0; }
+.swatch { width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.3); }
+.swatch.sel { border-color: var(--saffron); box-shadow: 0 0 0 2px var(--saffron); }
+.modes { display: flex; gap: 8px; margin-top: 16px; }
+.go {
+  flex: 1;
+  min-height: 46px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--saffron);
+  color: #1a1208;
+  font-weight: 800;
+  font-size: 16px;
+}
+.go:disabled { background: #3a3f47; color: var(--muted); cursor: not-allowed; }
+.go small { font-weight: 500; font-size: 11px; }
+.settings .go { width: 100%; margin-top: 14px; }
+.link { background: none; border: 0; color: var(--muted); margin-top: 10px; padding: 6px 0; font-size: 13px; }
+.check { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-size: 14px; }
+.keys { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
+kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin: 0 1px; font-size: 11px; }
+
+/* ---------- Loading & orientation hint ---------- */
+#loading {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  background: #14181e;
+  color: var(--muted);
+}
+.spinner {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 3px solid var(--line); border-top-color: var(--saffron);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#rotate-hint { display: none; }
+@media (orientation: portrait) and (pointer: coarse) {
+  #rotate-hint {
+    display: block;
+    position: fixed;
+    z-index: 30;
+    top: calc(env(safe-area-inset-top) + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--saffron);
+    color: #1a1208;
+    font-weight: 700;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  /* Portrait still works: shrink controls to fit. */
+  .pad { width: 62px; height: 62px; font-size: 24px; }
+  .pedal { width: 56px; height: 88px; font-size: 11px; }
+  .pedal.gas { height: 104px; }
+  .pedal.drift { width: 52px; height: 52px; }
+  .speedo { top: calc(env(safe-area-inset-top) + 56px); transform: translateX(-50%) scale(0.6); }
+}
