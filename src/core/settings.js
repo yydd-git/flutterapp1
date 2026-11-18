@@ -12,6 +12,7 @@ const DEFAULTS = {
   camera: 'chase', // key of CAMERA.modes
   showTouch: 'auto', // 'auto' | 'on' | 'off'
   invertTilt: false,
+  boundaries: 'walls', // 'walls' (stay near roads) | 'free' (drive anywhere)
 };
 
 export function loadSettings() {

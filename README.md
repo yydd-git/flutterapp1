@@ -4,9 +4,11 @@ A mobile-first browser driving game on the real roads of Chhattisgarh, India.
 Built with MapLibre GL JS, free OpenStreetMap vector tiles from OpenFreeMap,
 and plain JavaScript (Vite). No paid APIs, no keys.
 
-> **Status: Phase 1 of 4.** The map loads, and one drivable car (the *Pocket Hatch '84*)
-> works with touch, tilt and keyboard controls in six cities. Road snapping, more
-> cars, traffic, races and the PWA come in later phases.
+> **Status: Phase 2 of 4.** Drive four classic-inspired cars on real OpenStreetMap roads
+> in six cities. You spawn on the road, road names show as you drive, and road edges,
+> off-road grip and damage all work. Traffic, races and the PWA come in later phases.
+
+**Play:** https://yydd-git.github.io/flutterapp1/
 
 ## Run locally
 
@@ -22,7 +24,8 @@ npm run dev        # http://localhost:5173 (also printed with your LAN IP)
 Tilt steering needs HTTPS on most phones, so test tilt on a deployed build.
 
 ```bash
-npm test           # physics unit tests (Node's built-in test runner)
+npm run fetch-roads  # optional: pre-bake city road data from Overpass into public/roads/
+npm test           # physics and road unit tests (Node's built-in test runner)
 npm run build      # production build into dist/
 npm run preview    # serve dist/ locally
 ```
@@ -39,8 +42,40 @@ npm run preview    # serve dist/ locally
 | Respawn | ⟲ | `R` |
 | Pause / resume | ❚❚ | `Esc` / `P` |
 
-Pick the steering style under **Controls & settings**. Tilt uses the phone's
+Pick the steering style and **Road edges** (*Stay near roads* or *Drive anywhere*)
+under **Controls & settings**. Tilt uses the phone's
 position when you enable it as "straight ahead".
+
+## Cars
+
+| Car | Inspired by | Character |
+|---|---|---|
+| Pocket Hatch '84 | 1980s small hatchback | Light and nimble, ~110 km/h, average toughness |
+| Raj Sedan '68 | Classic rounded sedan | Heavy and slow to accelerate, ~105 km/h, very tough |
+| Ghat Jeep | Boxy 4x4 | ~90 km/h, keeps its grip off-road and can roam ~45 m off the tarmac |
+| Rani Roadster '58 | 1950s open two-seater | ~165 km/h with sharp handling, but fragile and poor in dirt |
+
+All are original designs, with no real brand names or logos. Menu stat bars are calculated from the physics specs.
+
+## Real roads (hybrid loading)
+
+The world is split into ~2 km cells (0.02°).
+1. **Pre-baked:** `npm run fetch-roads` makes one Overpass query per start city and writes
+   per-cell JSON to `public/roads/`. The GitHub Pages workflow runs this before every
+   deploy, so city centres load instantly from static files.
+2. **Live:** anywhere else, the game fetches cells from the
+   [Overpass API](https://overpass-api.de) in the browser, one request at a time and
+   with a mirror fallback, as you drive towards them.
+
+The road data drives the physics:
+- **Spawn and respawn** snap to the nearest major road, in the left lane and facing along the road.
+- **Road edges:** on the tarmac you get full grip, and OSM unpaved or dirt roads have less. Each car has
+  a verge (how far it can go off the road) with its own off-road penalty. Beyond the verge you hit
+  a wall and take damage based on impact speed and the car's toughness. At 100% damage the car is
+  towed back to the road.
+- **HUD:** the top bar shows the current road's reference number and name, e.g. `NH53 · GE Road`.
+- **Offline:** if map tiles can't load, the game draws the OSM roads itself.
+- **Debug:** add `?debug` to the URL to outline the physics roads on top of the map tiles.
 
 ## Deploy for free
 
@@ -67,11 +102,16 @@ src/
   core/settings.js   localStorage-backed settings (fails safe)
   map/mapView.js     MapLibre setup, style trimming, offline fallback
   physics/vehicle.js arcade car model (no DOM; unit-tested, reused for AI later)
-  cars/carTypes.js   car specs (speed, accel, grip, weight, colours)
+  physics/roadConstraint.js  surfaces, verges, wall collisions
+  roads/overpass.js  cells, Overpass query/parse (shared by browser + Node script)
+  roads/roadNetwork.js  spatial grid index: nearest road edge, spawn snapping
+  roads/roadLoader.js   pre-baked cells first, live Overpass fallback
+  cars/carTypes.js   4 car specs (speed, accel, grip, weight, off-road, toughness, colours)
   cars/sprites.js    procedural top-down sprites, cached per colour
   render/overlay.js  2D canvas drawn in sync with each map frame
   input/             keyboard, touch (multi-touch pointer events), tilt, merger
-  ui/                HUD speedometer, menus, top bar
+  ui/                HUD speedometer + damage, menus, car picker, top bar
+scripts/fetch-roads.mjs  build-time road pre-fetch
 ```
 
 ### Why 2D sprites instead of Three.js
@@ -95,7 +135,7 @@ you can still drive. Offline tile caching arrives with the PWA in Phase 4.
 
 ## Roadmap
 1. ✅ Map + one drivable car in Raipur + touch controls
-2. Road snapping and off-road slowdown from Overpass/OSM road data (pre-baked plus live), all four cars
+2. ✅ Road snapping, road edges and off-road behaviour from OSM data (pre-baked plus live), all four cars
 3. AI traffic (auto-rickshaws, buses, trucks, cows) and race mode (checkpoints, AI, leaderboard)
 4. Polish: sound, skid marks, day/night, monsoon rain, PWA offline caching
 
