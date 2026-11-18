@@ -33,12 +33,17 @@ export class RoadNetwork {
     return this.segs.length;
   }
 
-  /** Add compact ways (see overpass.js); duplicates by id are skipped. */
+  /**
+   * Add compact ways (see overpass.js); duplicates by id are skipped.
+   * @returns {object[]} the ways that were new
+   */
   addWays(ways) {
     const p = this._p;
+    const added = [];
     for (const w of ways) {
       if (this.wayIds.has(w.id)) continue;
       this.wayIds.add(w.id);
+      added.push(w);
       const info = {
         id: w.id,
         type: w.t,
@@ -65,6 +70,7 @@ export class RoadNetwork {
         ay = by;
       }
     }
+    return added;
   }
 
   _index(seg) {

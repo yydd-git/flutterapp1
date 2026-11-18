@@ -13,6 +13,7 @@ const DEFAULTS = {
   showTouch: 'auto', // 'auto' | 'on' | 'off'
   invertTilt: false,
   boundaries: 'walls', // 'walls' (stay near roads) | 'free' (drive anywhere)
+  buildings: 'flat', // 'flat' (fast) | '3d' (extruded blocks)
 };
 
 export function loadSettings() {

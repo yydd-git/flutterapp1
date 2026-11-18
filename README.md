@@ -46,6 +46,18 @@ Pick the steering style and **Road edges** (*Stay near roads* or *Drive anywhere
 under **Controls & settings**. Tilt uses the phone's
 position when you enable it as "straight ahead".
 
+## Look
+
+The real world is drawn in an original, cartoon-style "game city" look (`src/map/gameStyle.js`) instead of
+a map style:
+- **Roads** are drawn from the same OSM road data the physics uses, with pavements, asphalt,
+  white edge lines and a yellow or white dashed centre line, all at real widths in metres. The road
+  you see is exactly where the road edges are.
+- **The rest of the world** comes from OpenFreeMap vector tiles, restyled: coloured rooftops with drop
+  shadows (or 3D blocks under **Controls & settings → Buildings**), turquoise water, paddy-green
+  farmland, parks, railways, and a few landmark names. There are no map labels or shop icons.
+- Before a road cell's data arrives, the tiles' own roads show as plain asphalt.
+
 ## Cars
 
 | Car | Inspired by | Character |

@@ -17,7 +17,8 @@ import { Vehicle } from './physics/vehicle.js';
 import { applyRoadConstraint, surfacesFor } from './physics/roadConstraint.js';
 import { RoadNetwork, roadLabel } from './roads/roadNetwork.js';
 import { RoadLoader } from './roads/roadLoader.js';
-import { cellsInBox } from './roads/overpass.js';
+import { cellsInBox, wayHalfWidth, ROAD_CLASSES } from './roads/overpass.js';
+import { waysToFeatures } from './map/gameStyle.js';
 import { MapView } from './map/mapView.js';
 import { Overlay } from './render/overlay.js';
 import { InputManager, isTouchDevice } from './input/input.js';
@@ -25,6 +26,8 @@ import { Hud } from './ui/hud.js';
 import { Menu } from './ui/menu.js';
 
 const DEG = Math.PI / 180;
+const rankOf = (w) => (ROAD_CLASSES[w.t] || ROAD_CLASSES.road).rank;
+const labelOf = (w) => (w.r || w.n ? roadLabel({ ref: w.r || '', name: w.n || '' }) : '');
 const cityById = (id) => CITIES.find((c) => c.id === id) || CITIES[0];
 const DEBUG = /[?&]debug\b/.test(location.search);
 
@@ -47,8 +50,11 @@ export class Game {
     this.mapView = new MapView(el.map, {
       center: [city.lng, city.lat],
       zoom: CAMERA.zoomStill,
-      onFallback: () => this.hud.toast('Map tiles unavailable: drawing OSM roads offline', 5000),
+      buildings3d: this.settings.buildings === '3d',
+      onFallback: () => this.hud.toast('World tiles unavailable: showing roads only', 5000),
     });
+    this.roadFeatures = [];
+    this._roadsDirty = false;
 
     this.input = new InputManager(el.touch);
     this.hud = new Hud(el.hud);
@@ -91,6 +97,8 @@ export class Game {
     if (this.overlay) this.overlay.frame = this.frame;
     this.roads = new RoadNetwork(this.frame);
     this.roadsGen++;
+    this.roadFeatures = [];
+    this._roadsDirty = true;
     this.needsSnap = true;
     this.spawn = { x: 0, y: 0, heading: city.heading * DEG };
     this.player = new Vehicle(CAR_TYPES[this.settings.car], 0, 0, this.spawn.heading);
@@ -163,6 +171,7 @@ export class Game {
       }
     }
     this.input.tilt.invert = s.invertTilt;
+    if (key === 'buildings') this.mapView.setBuildings3d(s.buildings === '3d');
     const touch = s.showTouch === 'on' || (s.showTouch === 'auto' && isTouchDevice());
     this.input.touch.setVisible(touch);
     this.el.root.classList.toggle('has-touch', touch);
@@ -206,7 +215,9 @@ export class Game {
       if (this.roads.loadedCells.has(key) || this.loader.isPending(key) || this.loader.isBackingOff(key)) continue;
       this.loader.load(key).then((ways) => {
         if (gen !== this.roadsGen || !ways) return; // city changed meanwhile
-        this.roads.addWays(ways);
+        const added = this.roads.addWays(ways);
+        this.roadFeatures.push(...waysToFeatures(added, wayHalfWidth, rankOf, labelOf));
+        this._roadsDirty = true;
         this.roads.markLoaded(key);
         this._onRoadsLoaded();
       });
@@ -259,6 +270,12 @@ export class Game {
     if ((this._roadTimer -= dt) <= 0) {
       this._roadTimer = 0.5;
       this._requestRoads(p.x, p.y);
+      if (this._roadsDirty) {
+        this._roadsDirty = false;
+        this.mapView.setRoads(this.roadFeatures);
+      }
+      // Generic tile roads only where real road data hasn't arrived yet.
+      this.mapView.setTileRoadsVisible(!this.roads.isLoadedAt(p.x, p.y));
     }
     if ((this._labelTimer -= dt) <= 0) {
       this._labelTimer = 0.3;
@@ -331,10 +348,7 @@ export class Game {
     const o = this.overlay;
     const p = this.player;
     o.clear();
-    if (this.mapView.fallback) {
-      o.drawGrid(p.x, p.y, this.cam.bearing * DEG);
-      o.drawRoads(this.roads, p.x, p.y, this.cam.bearing * DEG);
-    } else if (DEBUG) {
+    if (DEBUG) {
       o.drawRoads(this.roads, p.x, p.y, this.cam.bearing * DEG, true);
     }
     o.drawCar(p, this.playerColour);

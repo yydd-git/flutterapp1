@@ -1,40 +1,32 @@
 /**
- * MapLibre wrapper: creates the map, trims the style for mobile
- * performance, falls back to a plain offline style if tiles are
- * unreachable, and exposes a minimal camera API to the game.
+ * MapLibre wrapper: creates the map with the game-city style, feeds it
+ * the physics road data, and exposes a minimal camera API to the game.
  */
 import { Map as MlMap, AttributionControl, setWorkerUrl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 // MapLibre 6 looks for its worker next to its own module file, which
 // doesn't exist after bundling. Ship the worker as a hashed asset instead.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
-import { MAP_STYLE_URL, ATTRIBUTION, PERF } from '../config.js';
-
-/** Plain land-coloured style used when the tile server can't be reached. */
-const FALLBACK_STYLE = {
-  version: 8,
-  sources: {},
-  layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#d9dcc6' } }],
-};
-
-/** Layers that cost a lot on mobile GPUs and add little from a chase cam. */
-const DROP_LAYER_TYPES = new Set(['fill-extrusion', 'hillshade', 'heatmap']);
+import { PERF } from '../config.js';
+import { buildGameStyle, ROADS_SOURCE, TILE_ROAD_LAYERS, BUILDING_FLAT_LAYERS, BUILDING_3D_LAYERS } from './gameStyle.js';
 
 setWorkerUrl(new URL(workerUrl, import.meta.url).href);
 
 export class MapView {
   /**
    * @param {HTMLElement} container
-   * @param {{center:[number,number], zoom:number, onFallback?:()=>void}} opts
+   * @param {{center:[number,number], zoom:number, buildings3d?:boolean, onFallback?:()=>void}} opts
    */
-  constructor(container, { center, zoom, onFallback }) {
-    this.fallback = false;
+  constructor(container, { center, zoom, buildings3d = false, onFallback }) {
+    this.fallback = false; // true once the world tiles have failed to load
     this.onFallback = onFallback;
-    this._styleLoaded = false;
+    this._loaded = false;
+    this._pendingRoads = null;
+    this._tileRoads = true;
 
     this.map = new MlMap({
       container,
-      style: MAP_STYLE_URL,
+      style: buildGameStyle({ lat: center[1], buildings3d }),
       center,
       zoom,
       pitch: 0,
@@ -63,43 +55,57 @@ export class MapView {
     });
 
     // Attribution is always expanded: the OSM licence requires it visible.
-    this.map.addControl(
-      new AttributionControl({ compact: false, customAttribution: ATTRIBUTION }),
-      'bottom-left'
-    );
+    // Credits come from each source in the style.
+    this.map.addControl(new AttributionControl({ compact: false }), 'bottom-left');
 
-    this.map.on('style.load', () => {
-      this._styleLoaded = true;
-      if (!this.fallback) this._trimStyle();
-    });
     this.map.on('error', (e) => {
-      // Before the style arrives, any error means the style or tile server
-      // is unreachable. Switch to the offline style so the game still runs.
-      if (!this._styleLoaded) this._useFallback(e?.error?.message);
+      // The style is built in code, so it always loads; an error from the
+      // world tile source means we're offline. Roads (from Overpass) still
+      // draw, so the game stays playable.
+      const msg = String(e?.error?.message || '');
+      if (!this.fallback && (e?.sourceId === 'world' || msg.includes('openfreemap'))) {
+        this.fallback = true;
+        console.warn('[map] World tiles unavailable:', msg);
+        this.onFallback?.();
+      }
     });
-    this._fallbackTimer = setTimeout(() => {
-      if (!this._styleLoaded) this._useFallback('timeout');
-    }, 10000);
 
-    this.ready = new Promise((resolve) => this.map.once('load', resolve));
+    this.ready = new Promise((resolve) =>
+      this.map.once('load', () => {
+        this._loaded = true;
+        if (this._pendingRoads) this.setRoads(this._pendingRoads);
+        this.setTileRoadsVisible(this._tileRoads, true);
+        resolve();
+      })
+    );
   }
 
-  _useFallback(reason) {
-    if (this.fallback) return;
-    console.warn('[map] Tiles unavailable, using offline style:', reason);
-    clearTimeout(this._fallbackTimer);
-    this.fallback = true;
-    this.map.setStyle(FALLBACK_STYLE);
-    this.onFallback?.();
-  }
-
-  /** Remove expensive layers from the downloaded style. */
-  _trimStyle() {
-    clearTimeout(this._fallbackTimer);
-    const style = this.map.getStyle();
-    for (const layer of style.layers) {
-      if (DROP_LAYER_TYPES.has(layer.type)) this.map.removeLayer(layer.id);
+  /** Replace the drawn game roads (GeoJSON features from the road network). */
+  setRoads(features) {
+    if (!this._loaded) {
+      this._pendingRoads = features;
+      return;
     }
+    this._pendingRoads = null;
+    this.map.getSource(ROADS_SOURCE)?.setData({ type: 'FeatureCollection', features });
+  }
+
+  /** Show the tiles' generic roads (used where real road data isn't loaded yet). */
+  setTileRoadsVisible(visible, force = false) {
+    if (visible === this._tileRoads && !force) return;
+    this._tileRoads = visible;
+    if (!this._loaded) return;
+    for (const id of TILE_ROAD_LAYERS) this.map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+  }
+
+  /** Flat roofs with shadows (fast) or extruded 3D blocks. */
+  setBuildings3d(on) {
+    if (!this._loaded) {
+      this.ready.then(() => this.setBuildings3d(on));
+      return;
+    }
+    for (const id of BUILDING_FLAT_LAYERS) this.map.setLayoutProperty(id, 'visibility', on ? 'none' : 'visible');
+    for (const id of BUILDING_3D_LAYERS) this.map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
   }
 
   /**

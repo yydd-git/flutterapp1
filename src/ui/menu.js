@@ -150,6 +150,10 @@ export class Menu {
       <div class="choices">
         ${opt('showTouch', 'auto', 'Auto')}${opt('showTouch', 'on', 'Always')}${opt('showTouch', 'off', 'Hidden')}
       </div>
+      <h2>Buildings</h2>
+      <div class="choices">
+        ${opt('buildings', 'flat', 'Flat roofs (fastest)')}${opt('buildings', '3d', '3D blocks')}
+      </div>
       <h2>Road edges</h2>
       <div class="choices">
         ${opt('boundaries', 'walls', 'Stay near roads')}${opt('boundaries', 'free', 'Drive anywhere')}

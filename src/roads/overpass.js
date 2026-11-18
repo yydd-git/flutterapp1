@@ -88,7 +88,7 @@ export function buildQuery({ s, w, n, e }, timeout = 25) {
 
 /**
  * Compact way record:
- * { id, t: highway, n?: name, r?: ref, l?: lanes, u?: 1 if unpaved,
+ * { id, t: highway, n?: name, r?: ref, l?: lanes, u?: 1 if unpaved, o?: 1 if one-way,
  *   c: [lng, lat, lng, lat, ...] rounded to 5 dp (~1 m) }
  */
 export function parseOverpass(json) {
@@ -110,6 +110,7 @@ export function parseOverpass(json) {
     const lanes = parseInt(tg.lanes, 10);
     if (lanes > 0 && lanes < 12) w.l = lanes;
     if (tg.highway === 'track' || UNPAVED.has(tg.surface)) w.u = 1;
+    if (['yes', '1', '-1', 'true'].includes(tg.oneway) || tg.junction === 'roundabout') w.o = 1;
     ways.push(w);
   }
   return ways;
