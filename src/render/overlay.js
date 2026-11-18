@@ -6,7 +6,7 @@
  * correctly under any map zoom, bearing or pitch without us copying
  * MapLibre's camera maths. Cost: 3 projections per vehicle per frame.
  */
-import { getCarSprite } from '../cars/sprites.js';
+import { getCarSprite, shade } from '../cars/sprites.js';
 import { PERF } from '../config.js';
 
 export class Overlay {
@@ -214,6 +214,80 @@ export class Overlay {
     }
     // Posts
     for (const [px, py] of [[ax, ay], [bx, by]]) quad(px + lx * 0.35, py + ly * 0.35, px - lx * 0.35, py - ly * 0.35, 0.35, '#2b2b2b');
+  }
+
+  /**
+   * Driver view: your own bonnet in the car's colour, a dashboard and a
+   * right-hand-drive steering wheel that turns with the steering.
+   * Drawn in screen space over everything else.
+   */
+  drawCockpit(colour, steer, spec) {
+    const { ctx, canvas } = this;
+    const W = canvas.width, H = canvas.height;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const open = spec.id === 'roadster' || spec.id === 'jeep';
+    // Roof line and pillars (closed cars)
+    if (!open) {
+      ctx.fillStyle = '#15181c';
+      ctx.fillRect(0, 0, W, H * 0.035);
+      ctx.beginPath();
+      ctx.moveTo(0, 0); ctx.lineTo(W * 0.07, 0); ctx.lineTo(W * 0.015, H * 0.7); ctx.lineTo(0, H * 0.72);
+      ctx.moveTo(W, 0); ctx.lineTo(W * 0.93, 0); ctx.lineTo(W * 0.985, H * 0.7); ctx.lineTo(W, H * 0.72);
+      ctx.fill();
+    } else {
+      // Thin windscreen frame
+      ctx.strokeStyle = '#2a2a2a';
+      ctx.lineWidth = H * 0.012;
+      ctx.beginPath();
+      ctx.moveTo(W * 0.2, H * 0.84); ctx.lineTo(W * 0.25, H * 0.5); ctx.lineTo(W * 0.75, H * 0.5); ctx.lineTo(W * 0.8, H * 0.84);
+      ctx.stroke();
+    }
+    // Bonnet
+    const top = H * (spec.id === 'roadster' ? 0.76 : 0.8);
+    const g = ctx.createLinearGradient(0, top, 0, H);
+    g.addColorStop(0, shade(colour, 0.12));
+    g.addColorStop(1, shade(colour, -0.3));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.06, H);
+    ctx.quadraticCurveTo(W * 0.2, top + (H - top) * 0.15, W * 0.34, top);
+    ctx.quadraticCurveTo(W * 0.5, top - H * 0.02, W * 0.66, top);
+    ctx.quadraticCurveTo(W * 0.8, top + (H - top) * 0.15, W * 0.94, H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = shade(colour, -0.15);
+    ctx.lineWidth = Math.max(1, H * 0.004);
+    ctx.beginPath();
+    ctx.moveTo(W * 0.5, top - H * 0.012);
+    ctx.lineTo(W * 0.5, H);
+    ctx.stroke();
+    // Dashboard
+    ctx.fillStyle = '#1d1f23';
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    ctx.lineTo(0, H * 0.9);
+    ctx.quadraticCurveTo(W * 0.5, H * 0.86, W, H * 0.9);
+    ctx.lineTo(W, H);
+    ctx.closePath();
+    ctx.fill();
+    // Steering wheel on the right (India is right-hand drive)
+    const cx = W * 0.66, cy = H * 1.06, r = H * 0.2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(steer * 1.7);
+    ctx.strokeStyle = '#121314';
+    ctx.lineWidth = H * 0.032;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = H * 0.022;
+    ctx.beginPath();
+    ctx.moveTo(-r, 0); ctx.lineTo(r, 0);
+    ctx.moveTo(0, 0); ctx.lineTo(0, r);
+    ctx.stroke();
+    ctx.fillStyle = '#ff9933'; // top-centre marker shows the wheel turning
+    ctx.fillRect(-H * 0.008, -r - H * 0.016, H * 0.016, H * 0.032);
+    ctx.restore();
   }
 
   /** Draw a vehicle (physics object + render info). */

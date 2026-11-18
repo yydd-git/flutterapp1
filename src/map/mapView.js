@@ -31,8 +31,8 @@ export class MapView {
       zoom,
       pitch: 0,
       bearing: 0,
-      maxPitch: 60,
-      maxZoom: 22,
+      maxPitch: 85, // the Driver view looks almost level
+      maxZoom: 24,
       // The game owns the camera: disable every user gesture so touches on
       // the pedals never pan or zoom the map.
       dragPan: false,
@@ -57,6 +57,13 @@ export class MapView {
     // Attribution is always expanded: the OSM licence requires it visible.
     // Credits come from each source in the style.
     this.map.addControl(new AttributionControl({ compact: false }), 'bottom-left');
+    // Lift the controls out of the map's stacking context so the game
+    // overlay (e.g. the Driver-view dashboard) can never cover the credits.
+    const controls = container.querySelector('.maplibregl-control-container');
+    if (controls) {
+      controls.classList.add('game-controls');
+      document.body.appendChild(controls);
+    }
 
     this.map.on('error', (e) => {
       // The style is built in code, so it always loads; an error from the

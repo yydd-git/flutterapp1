@@ -39,7 +39,7 @@ npm run preview    # serve dist/ locally
 | Brake / reverse (hold when stopped) | **BRAKE** pedal | `S` / `↓` |
 | Steer | ◀ ▶ pads, slide stick, or tilt | `A` `D` / `←` `→` |
 | Drift (handbrake) | **DRIFT** | `Space` |
-| Camera (chase / top-down / north-up) | 🎥 | `C` |
+| Camera (chase / top-down / north-up / driver view) | 🎥 | `C` |
 | Respawn | ⟲ | `R` |
 | Pause / resume | ❚❚ | `Esc` / `P` |
 
@@ -58,6 +58,20 @@ a map style:
   shadows (or 3D blocks under **Controls & settings → Buildings**), turquoise water, paddy-green
   farmland, parks, railways, and a few landmark names. There are no map labels or shop icons.
 - Before a road cell's data arrives, the tiles' own roads show as plain asphalt.
+
+## Driver view
+
+Tap 🎥 (or press `C`) until **Driver view** for an in-car camera, about 1 m above the road at the
+driver's seat. In this view:
+- **The world:** you see a sky and horizon, the road ahead with its lane markings, and your own bonnet in
+  your car's colour.
+- **The cockpit:** a dashboard and a right-hand-drive steering wheel that turns as you steer.
+- **3D blocks:** traffic, opponents, cows and checkpoint arches are drawn as low-poly 3D blocks
+  (`src/render/boxes.js`), so they stand up from the road instead of lying flat.
+- **The speedometer** moves down onto the dashboard.
+
+MapLibre's camera is placed at the driver's eye: the zoom is chosen so that the camera's distance from
+the map centre equals `eye height ÷ cos(pitch)`.
 
 ## Traffic
 
@@ -169,6 +183,7 @@ src/
   cars/carTypes.js   4 car specs (speed, accel, grip, weight, off-road, toughness, colours)
   cars/sprites.js    procedural top-down sprites, cached per colour
   render/overlay.js  2D canvas drawn in sync with each map frame
+  render/boxes.js    low-poly 3D blocks and cockpit for the Driver view
   input/             keyboard, touch (multi-touch pointer events), tilt, merger
   ui/                HUD speedometer + damage, mini-map, race HUD, menus, top bar
 scripts/fetch-roads.mjs  build-time pre-fetch of city roads and race lines (incremental)

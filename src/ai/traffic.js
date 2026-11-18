@@ -14,10 +14,10 @@
 import { clamp, approach } from '../core/geo.js';
 
 export const TRAFFIC_TYPES = {
-  rickshaw: { id: 'rickshaw', sprite: 'rickshaw', length: 2.75, width: 1.35, mass: 400, speed: [7, 10], colours: ['#f2c21b', '#2f8f46', '#111111'], weight: 4 },
-  bus: { id: 'bus', sprite: 'bus', length: 11, width: 2.5, mass: 9500, speed: [9, 13], colours: ['#c62828', '#1565c0', '#ef6c00', '#2e7d32'], weight: 1.4 },
-  truck: { id: 'truck', sprite: 'truck', length: 8.5, width: 2.45, mass: 12000, speed: [8, 12], colours: ['#e65100', '#2e7d32', '#6a1b9a', '#c62828', '#f9a825'], weight: 2 },
-  cow: { id: 'cow', sprite: 'cow', length: 2.2, width: 0.85, mass: 450, speed: [0, 0.6], colours: ['#f3efe6', '#8d6e63', '#d7ccc8', '#3e2723'], weight: 1.4 },
+  rickshaw: { id: 'rickshaw', sprite: 'rickshaw', length: 2.75, width: 1.35, height: 1.8, mass: 400, speed: [7, 10], colours: ['#f2c21b', '#2f8f46', '#111111'], weight: 4 },
+  bus: { id: 'bus', sprite: 'bus', length: 11, width: 2.5, height: 3.2, mass: 9500, speed: [9, 13], colours: ['#c62828', '#1565c0', '#ef6c00', '#2e7d32'], weight: 1.4 },
+  truck: { id: 'truck', sprite: 'truck', length: 8.5, width: 2.45, height: 3.4, sideColour: '#8a7a52', mass: 12000, speed: [8, 12], colours: ['#e65100', '#2e7d32', '#6a1b9a', '#c62828', '#f9a825'], weight: 2 },
+  cow: { id: 'cow', sprite: 'cow', length: 2.2, width: 0.85, height: 1.4, mass: 450, speed: [0, 0.6], colours: ['#f3efe6', '#8d6e63', '#d7ccc8', '#3e2723'], weight: 1.4 },
 };
 const TYPE_LIST = Object.values(TRAFFIC_TYPES);
 export const DENSITY = { off: 0, normal: 14, busy: 24 };

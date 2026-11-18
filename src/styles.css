@@ -456,3 +456,17 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin:
   .routes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .race-panel { top: calc(env(safe-area-inset-top) + 52px); }
 }
+
+/* ---------- Driver view ---------- */
+.game-controls { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
+/* Speedometer moves down onto the dashboard so the road ahead is clear */
+.driver-view .speedo {
+  top: auto;
+  bottom: calc(env(safe-area-inset-bottom) + 14px);
+  left: 42%;
+  transform: translateX(-50%) scale(0.62);
+  transform-origin: bottom center;
+}
+@media (orientation: portrait) and (pointer: coarse) {
+  .driver-view .speedo { bottom: 150px; left: 50%; }
+}

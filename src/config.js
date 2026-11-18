@@ -39,6 +39,7 @@ export const CAMERA = {
     chase: { pitch: 50, headingUp: true, label: 'Chase' },
     top: { pitch: 0, headingUp: true, label: 'Top-down' },
     north: { pitch: 0, headingUp: false, label: 'North-up' },
+    driver: { pitch: 80, headingUp: true, driver: true, label: 'Driver view' },
   },
 };
 

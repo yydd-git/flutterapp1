@@ -24,6 +24,7 @@ import { cellsInBox, wayHalfWidth, ROAD_CLASSES } from './roads/overpass.js';
 import { waysToFeatures } from './map/gameStyle.js';
 import { MapView } from './map/mapView.js';
 import { Overlay } from './render/overlay.js';
+import { BoxRenderer } from './render/boxes.js';
 import { InputManager, isTouchDevice } from './input/input.js';
 import { TrafficManager } from './ai/traffic.js';
 import { Race } from './race/raceManager.js';
@@ -99,6 +100,7 @@ export class Game {
     this.cam = { bearing: city.heading, zoom: CAMERA.zoomStill, pitch: 0, look: 0, screenY: 0.5 };
     this._spawnAt(city);
     this.overlay = new Overlay(el.overlay, this.mapView, this.frame);
+    this.boxes = new BoxRenderer(this.overlay);
 
     this.applySettings();
     this._bindKeys();
@@ -435,6 +437,11 @@ export class Game {
       this._updatePlace();
     }
     this.minimap.setVisible(this.state === 'driving');
+    const driverView = this.state === 'driving' && !!CAMERA.modes[this.settings.camera]?.driver;
+    if (driverView !== this._driverView) {
+      this._driverView = driverView;
+      this.el.root.classList.toggle('driver-view', driverView);
+    }
     this.minimap.update(dt, { player: p, roads: this.roads, race, traffic: this.traffic.agents });
 
     this._updateCamera(dt);
@@ -481,6 +488,8 @@ export class Game {
     const diff = wrapAngle((targetBearing - cam.bearing) * DEG) / DEG;
     cam.bearing += menu ? diff : diff * smoothing(CAMERA.bearingFollow, dt);
 
+    if (mode.driver && !menu) return this._driverCamera(dt, mode);
+
     const speed = Math.abs(car.forwardSpeed);
     const t = clamp(speed / CAMERA.zoomSpeedRef, 0, 1);
     const screenAdj = clamp(Math.log2(window.innerHeight / CAMERA.refViewportHeight), -0.5, 1.2);
@@ -499,7 +508,68 @@ export class Game {
     this.mapView.setCamera(this.frame.toLngLat(cx, cy), cam.bearing, cam.zoom, cam.pitch, cam.screenY);
   }
 
+  /**
+   * Driver view: put MapLibre's camera at the driver's eye.
+   * MapLibre places the camera `1.5 × screen height` pixels from the map
+   * centre (its default 36.87° field of view), along the pitch angle. So
+   * for an eye height e and pitch p, the camera sits d = e / cos p metres
+   * from the centre. We choose the zoom that makes that distance d, and put
+   * the centre d·sin p metres ahead of the car.
+   */
+  _driverCamera(dt, mode) {
+    const car = this.player, cam = this.cam;
+    // Bearing locked to the car (the driver's head turns with it)
+    const diff = wrapAngle(car.heading - cam.bearing * DEG) / DEG;
+    cam.bearing += diff * smoothing(18, dt);
+    cam.pitch += (mode.pitch - cam.pitch) * smoothing(5, dt);
+    const p = cam.pitch * DEG;
+    const eye = (car.spec.height || 1.4) * 0.82;
+    const d = eye / Math.max(0.05, Math.cos(p));
+    const metresPerWorldPx = 40075016.686 * Math.cos(this.frame.lat0 * DEG) / 512;
+    const targetZoom = Math.log2((metresPerWorldPx * 1.5 * window.innerHeight) / d);
+    cam.zoom += (targetZoom - cam.zoom) * smoothing(6, dt);
+    cam.screenY += (0.5 - cam.screenY) * smoothing(6, dt);
+    const b = cam.bearing * DEG;
+    const ahead = d * Math.sin(p) + 1.2; // eye slightly forward of the car centre
+    const cx = car.x + Math.sin(b) * ahead, cy = car.y + Math.cos(b) * ahead;
+    this.mapView.setCamera(this.frame.toLngLat(cx, cy), cam.bearing, cam.zoom, cam.pitch, cam.screenY);
+  }
+
+  /** Driver view drawing: 3D blocks far-to-near, then the cockpit. */
+  _drawDriver() {
+    const o = this.overlay, p = this.player, race = this.race;
+    const bx = this.boxes;
+    const view = this.cam.bearing * DEG;
+    bx.begin(p.x, p.y, view, this.cam.pitch * DEG);
+    const items = [];
+    const consider = (v, colour) => {
+      const dx = v.x - p.x, dy = v.y - p.y;
+      if (dx * dx + dy * dy > 250 * 250) return;
+      const depth = bx.depth(v.x, v.y);
+      if (depth > 2) items.push({ depth, draw: () => bx.vehicle(v, colour) });
+    };
+    for (const a of this.traffic.agents) if (a.active) consider(a, a.colour);
+    if (race) for (const r of race.racers) consider(r, r.colour);
+    if (race && race.nextCp < race.checkpoints.length && race.state !== 'finished') {
+      const cp = race.checkpointPoint(race.nextCp);
+      const depth = bx.depth(cp.x, cp.y);
+      if (depth > 2 && depth < 300) {
+        const hit = this.roads.query(cp.x, cp.y, 30);
+        const half = hit.found ? Math.max(hit.way.half, 4) : 6;
+        items.push({ depth, draw: () => bx.gate(cp.x, cp.y, cp.heading, half, race.nextCp === race.checkpoints.length - 1) });
+      }
+    }
+    items.sort((a, b) => b.depth - a.depth);
+    for (const it of items) it.draw();
+    o.drawCockpit(this.playerColour, p.steer, p.spec);
+  }
+
   _draw() {
+    const mode = CAMERA.modes[this.settings.camera];
+    if (mode?.driver && this.state === 'driving') {
+      this.overlay.clear();
+      return this._drawDriver();
+    }
     const o = this.overlay;
     const p = this.player;
     const view = { viewX: p.x, viewY: p.y, viewHeading: this.cam.bearing * DEG };
