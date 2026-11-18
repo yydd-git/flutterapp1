@@ -314,7 +314,191 @@ function drawRoadster(ctx, L, W, colour) {
   ctx.fill();
 }
 
-const DRAWERS = { hatchback: drawHatchback, sedan: drawSedan, jeep: drawJeep, roadster: drawRoadster };
+/* ---------------- traffic ---------------- */
+
+/** Three-wheeler auto-rickshaw: tapered nose, single front wheel, canvas roof. */
+function drawRickshaw(ctx, L, W, colour) {
+  const hl = L / 2, hw = W / 2;
+  ctx.fillStyle = '#1b1b1b';
+  ctx.fillRect(-0.09, -hl + 0.15, 0.18, 0.45); // front wheel
+  ctx.fillRect(-hw - 0.02, hl - 0.75, 0.16, 0.48);
+  ctx.fillRect(hw - 0.14, hl - 0.75, 0.16, 0.48);
+  // Body: narrow nose widening to the passenger bench
+  ctx.fillStyle = colour;
+  ctx.beginPath();
+  ctx.moveTo(-0.28, -hl);
+  ctx.lineTo(0.28, -hl);
+  ctx.quadraticCurveTo(hw, -hl + 0.6, hw - 0.04, -hl + 1.1);
+  ctx.lineTo(hw - 0.04, hl - 0.1);
+  ctx.quadraticCurveTo(0, hl + 0.05, -hw + 0.04, hl - 0.1);
+  ctx.lineTo(-hw + 0.04, -hl + 1.1);
+  ctx.quadraticCurveTo(-hw, -hl + 0.6, -0.28, -hl);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = shade(colour, -0.45);
+  ctx.lineWidth = 0.04;
+  ctx.stroke();
+  // Canvas roof (contrasting) over driver + bench
+  const roof = colour === '#f2c21b' ? '#1f6b38' : colour === '#111111' ? '#f2c21b' : '#151515';
+  ctx.fillStyle = roof;
+  rrect(ctx, -hw + 0.1, -hl + 0.75, W - 0.2, L - 0.95, 0.35);
+  ctx.fill();
+  ctx.fillStyle = shade(roof, 0.25);
+  ctx.fillRect(-hw + 0.18, -hl + 0.95, W - 0.36, 0.05);
+  // Headlamp on the nose
+  ctx.fillStyle = '#fff6c8';
+  ctx.beginPath();
+  ctx.arc(0, -hl + 0.08, 0.08, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** State-bus style coach: long box, roof hatches, rows of windows. */
+function drawBus(ctx, L, W, colour) {
+  const hl = L / 2, hw = W / 2;
+  ctx.fillStyle = '#1b1b1b';
+  for (const wy of [-hl + 1.8, hl - 2.4, hl - 1.3]) {
+    ctx.fillRect(-hw - 0.04, wy - 0.45, 0.22, 0.9);
+    ctx.fillRect(hw - 0.18, wy - 0.45, 0.22, 0.9);
+  }
+  ctx.fillStyle = colour;
+  rrect(ctx, -hw + 0.04, -hl, W - 0.08, L, 0.35);
+  ctx.fill();
+  ctx.strokeStyle = shade(colour, -0.45);
+  ctx.lineWidth = 0.05;
+  ctx.stroke();
+  // Cream roof band and windscreen
+  ctx.fillStyle = '#efe7d2';
+  rrect(ctx, -hw + 0.25, -hl + 0.9, W - 0.5, L - 1.4, 0.2);
+  ctx.fill();
+  ctx.fillStyle = '#26323d';
+  ctx.fillRect(-hw + 0.18, -hl + 0.12, W - 0.36, 0.55);
+  // Side windows peeking out
+  ctx.fillStyle = '#334452';
+  for (let y = -hl + 1.1; y < hl - 0.8; y += 1.15) {
+    ctx.fillRect(-hw + 0.06, y, 0.16, 0.85);
+    ctx.fillRect(hw - 0.22, y, 0.16, 0.85);
+  }
+  // Roof hatches and luggage rack strip
+  ctx.fillStyle = shade('#efe7d2', -0.2);
+  ctx.fillRect(-0.4, -hl + 2.2, 0.8, 0.7);
+  ctx.fillRect(-0.4, hl - 3.2, 0.8, 0.7);
+  ctx.strokeStyle = shade(colour, -0.2);
+  ctx.lineWidth = 0.06;
+  ctx.beginPath();
+  ctx.moveTo(-hw + 0.5, -hl + 3.3);
+  ctx.lineTo(-hw + 0.5, hl - 3.6);
+  ctx.moveTo(hw - 0.5, -hl + 3.3);
+  ctx.lineTo(hw - 0.5, hl - 3.6);
+  ctx.stroke();
+  ctx.fillStyle = '#fff6c8';
+  ctx.fillRect(-hw + 0.15, -hl + 0.02, 0.35, 0.08);
+  ctx.fillRect(hw - 0.5, -hl + 0.02, 0.35, 0.08);
+}
+
+/** Decorated goods truck: bright cab, tarpaulin-covered cargo bed. */
+function drawTruck(ctx, L, W, colour) {
+  const hl = L / 2, hw = W / 2;
+  ctx.fillStyle = '#1b1b1b';
+  for (const wy of [-hl + 1.1, hl - 2.2, hl - 1.1]) {
+    ctx.fillRect(-hw - 0.04, wy - 0.45, 0.24, 0.9);
+    ctx.fillRect(hw - 0.2, wy - 0.45, 0.24, 0.9);
+  }
+  // Cab
+  ctx.fillStyle = colour;
+  rrect(ctx, -hw + 0.1, -hl, W - 0.2, 2.1, 0.3);
+  ctx.fill();
+  ctx.strokeStyle = shade(colour, -0.45);
+  ctx.lineWidth = 0.05;
+  ctx.stroke();
+  ctx.fillStyle = '#26323d';
+  ctx.fillRect(-hw + 0.25, -hl + 0.25, W - 0.5, 0.45);
+  // Painted roof pattern on the cab (stripes + dots)
+  ctx.fillStyle = '#f9e04b';
+  ctx.fillRect(-hw + 0.25, -hl + 0.9, W - 0.5, 0.12);
+  ctx.fillStyle = '#e53935';
+  for (let x = -hw + 0.45; x < hw - 0.3; x += 0.4) {
+    ctx.beginPath();
+    ctx.arc(x, -hl + 1.35, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Cargo bed with tarpaulin and ropes
+  ctx.fillStyle = '#8a7a52';
+  rrect(ctx, -hw + 0.02, -hl + 2.2, W - 0.04, L - 2.25, 0.12);
+  ctx.fill();
+  ctx.strokeStyle = '#5d5236';
+  ctx.lineWidth = 0.05;
+  ctx.beginPath();
+  for (let y = -hl + 2.8; y < hl - 0.2; y += 0.9) {
+    ctx.moveTo(-hw + 0.05, y);
+    ctx.lineTo(hw - 0.05, y + 0.25);
+  }
+  ctx.stroke();
+  // Colourful rear bumper strip
+  const stripes = ['#e53935', '#fdd835', '#43a047', '#1e88e5'];
+  for (let i = 0; i < 8; i++) {
+    ctx.fillStyle = stripes[i % 4];
+    ctx.fillRect(-hw + 0.1 + (i * (W - 0.2)) / 8, hl - 0.12, (W - 0.2) / 8, 0.12);
+  }
+  ctx.fillStyle = '#fff6c8';
+  ctx.fillRect(-hw + 0.15, -hl + 0.02, 0.3, 0.08);
+  ctx.fillRect(hw - 0.45, -hl + 0.02, 0.3, 0.08);
+}
+
+/** Cow seen from above: body, head with horns, tail. Front = head. */
+function drawCow(ctx, L, W, colour) {
+  const hl = L / 2, hw = W / 2;
+  const dark = shade(colour, -0.35);
+  // Tail
+  ctx.strokeStyle = dark;
+  ctx.lineWidth = 0.06;
+  ctx.beginPath();
+  ctx.moveTo(0, hl - 0.35);
+  ctx.quadraticCurveTo(0.15, hl - 0.05, 0.05, hl);
+  ctx.stroke();
+  // Body
+  ctx.fillStyle = colour;
+  ctx.beginPath();
+  ctx.ellipse(0, 0.2, hw, hl * 0.62, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = dark;
+  ctx.lineWidth = 0.04;
+  ctx.stroke();
+  // Hump (zebu cattle) and a patch
+  ctx.fillStyle = shade(colour, 0.15);
+  ctx.beginPath();
+  ctx.ellipse(0, -0.35, hw * 0.6, 0.22, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = dark;
+  ctx.globalAlpha = 0.35;
+  ctx.beginPath();
+  ctx.ellipse(0.12, 0.45, 0.18, 0.25, 0.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  // Head, ears, horns
+  ctx.fillStyle = colour;
+  ctx.beginPath();
+  ctx.ellipse(0, -hl + 0.28, 0.2, 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = shade(colour, -0.15);
+  ctx.beginPath();
+  ctx.ellipse(-0.24, -hl + 0.45, 0.1, 0.05, 0.5, 0, Math.PI * 2);
+  ctx.ellipse(0.24, -hl + 0.45, 0.1, 0.05, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#e8dcc0';
+  ctx.lineWidth = 0.06;
+  ctx.beginPath();
+  ctx.moveTo(-0.1, -hl + 0.3);
+  ctx.quadraticCurveTo(-0.3, -hl + 0.1, -0.22, -hl + 0.02);
+  ctx.moveTo(0.1, -hl + 0.3);
+  ctx.quadraticCurveTo(0.3, -hl + 0.1, 0.22, -hl + 0.02);
+  ctx.stroke();
+}
+
+const DRAWERS = {
+  hatchback: drawHatchback, sedan: drawSedan, jeep: drawJeep, roadster: drawRoadster,
+  rickshaw: drawRickshaw, bus: drawBus, truck: drawTruck, cow: drawCow,
+};
 
 /**
  * Get (or build) the cached sprite canvas for a car spec + colour.

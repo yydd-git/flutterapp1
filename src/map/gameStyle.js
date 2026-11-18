@@ -14,6 +14,7 @@
  */
 
 export const ROADS_SOURCE = 'game-roads';
+export const ROUTE_SOURCE = 'race-route';
 export const TILE_ROAD_LAYERS = ['tile-road-casing', 'tile-road'];
 export const BUILDING_FLAT_LAYERS = ['building-shadow', 'building-roof', 'building-edge'];
 export const BUILDING_3D_LAYERS = ['building-3d'];
@@ -79,6 +80,16 @@ export function buildGameStyle({ lat, buildings3d = false }) {
     version: 8,
     name: 'Chhattisgarh Road Rally',
     glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+    // Sky and haze for the near-level Driver view (hidden at lower pitch)
+    sky: {
+      'sky-color': '#8fc6ea',
+      'horizon-color': '#f4e6c8',
+      'fog-color': '#e9e2cc',
+      'sky-horizon-blend': 0.6,
+      'horizon-fog-blend': 0.7,
+      'fog-ground-blend': 0.75,
+      'atmosphere-blend': 0,
+    },
     sources: {
       world: {
         type: 'vector',
@@ -96,6 +107,7 @@ export function buildGameStyle({ lat, buildings3d = false }) {
         buffer: 64,
         tolerance: 0.2,
       },
+      [ROUTE_SOURCE]: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     },
     layers: [
       { id: 'ground', type: 'background', paint: { 'background-color': P.ground } },
@@ -196,6 +208,18 @@ export function buildGameStyle({ lat, buildings3d = false }) {
           'line-width': W(0.2),
           'line-dasharray': [14, 22],
         },
+      },
+
+      /* ---------- race line (only during races) ---------- */
+      {
+        id: 'race-line-glow', type: 'line', source: ROUTE_SOURCE,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#ff9933', 'line-opacity': 0.14, 'line-width': W(3.5) },
+      },
+      {
+        id: 'race-line', type: 'line', source: ROUTE_SOURCE,
+        layout: { 'line-cap': 'butt', 'line-join': 'round' },
+        paint: { 'line-color': '#ff9933', 'line-opacity': 0.7, 'line-width': W(0.5), 'line-dasharray': [6, 6] },
       },
 
       /* ---------- buildings ---------- */

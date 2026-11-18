@@ -14,6 +14,11 @@ const DEFAULTS = {
   invertTilt: false,
   boundaries: 'walls', // 'walls' (stay near roads) | 'free' (drive anywhere)
   buildings: 'flat', // 'flat' (fast) | '3d' (extruded blocks)
+  traffic: 'normal', // 'off' | 'normal' | 'busy'
+  raceRoute: 'raipur-bhilai',
+  raceVariant: 'sprint', // 'sprint' | 'full'
+  raceLaps: 3,
+  raceOpponents: 3,
 };
 
 export function loadSettings() {

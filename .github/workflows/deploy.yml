@@ -27,11 +27,28 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      # Pre-bake real road data for the six start cities from Overpass.
-      # Non-fatal: if Overpass is down, the game fetches roads live instead.
-      - name: Fetch OSM roads
-        run: npm run fetch-roads || echo "::warning::Road pre-fetch failed; roads will load live in the browser"
-        timeout-minutes: 10
+      # Pre-baked OSM data (city roads + race lines) is kept between runs, so
+      # each deploy only asks the rate-limited public Overpass servers for
+      # what's still missing. Bump "osm-v1" to force a full refresh.
+      - name: Restore OSM data
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            public/roads
+            public/routes
+          key: osm-v1-${{ github.run_id }}
+          restore-keys: osm-v1-
+      # Non-fatal: anything missing is fetched live in the browser instead.
+      - name: Fetch OSM roads and race lines
+        run: npm run fetch-roads || echo "::warning::Some OSM data could not be pre-fetched; it will load live in the browser"
+        timeout-minutes: 15
+      - name: Save OSM data
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            public/roads
+            public/routes
+          key: osm-v1-${{ github.run_id }}
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

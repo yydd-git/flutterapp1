@@ -1,13 +1,15 @@
 /**
  * Game orchestrator: owns the main loop and wires the map, roads, physics,
- * rendering, input and UI modules together.
+ * traffic, races, rendering, input and UI modules together.
  *
  * Frame order:
- *   1. requestAnimationFrame → fixed-step physics (+ road constraint)
- *      → camera jumpTo
+ *   1. requestAnimationFrame → fixed-step physics (road constraint and
+ *      collisions) → traffic and race AI → camera jumpTo
  *   2. MapLibre renders its frame with that camera
  *   3. on map 'render' → overlay draws vehicles with the same camera
- * So sprites never drift against the map tiles.
+ * So sprites never drift against the map.
+ *
+ * Modes: null (menu only), 'free' (Free Drive in a city), 'race'.
  */
 import { CITIES, CAMERA, PERF } from './config.js';
 import { LocalFrame, clamp, lerp, smoothing, wrapAngle } from './core/geo.js';
@@ -15,15 +17,25 @@ import { loadSettings, saveSettings } from './core/settings.js';
 import { CAR_TYPES } from './cars/carTypes.js';
 import { Vehicle } from './physics/vehicle.js';
 import { applyRoadConstraint, surfacesFor } from './physics/roadConstraint.js';
+import { collidePlayer } from './physics/collide.js';
 import { RoadNetwork, roadLabel } from './roads/roadNetwork.js';
 import { RoadLoader } from './roads/roadLoader.js';
 import { cellsInBox, wayHalfWidth, ROAD_CLASSES } from './roads/overpass.js';
 import { waysToFeatures } from './map/gameStyle.js';
 import { MapView } from './map/mapView.js';
 import { Overlay } from './render/overlay.js';
+import { BoxRenderer } from './render/boxes.js';
 import { InputManager, isTouchDevice } from './input/input.js';
+import { TrafficManager } from './ai/traffic.js';
+import { Race } from './race/raceManager.js';
+import { routeById, SPRINT_METRES } from './race/routes.js';
+import { loadRoute } from './race/routeLoader.js';
+import { distM } from './race/routing.js';
+import { addTime } from './race/leaderboard.js';
 import { Hud } from './ui/hud.js';
 import { Menu } from './ui/menu.js';
+import { Minimap } from './ui/minimap.js';
+import { RaceHud } from './ui/raceHud.js';
 
 const DEG = Math.PI / 180;
 const rankOf = (w) => (ROAD_CLASSES[w.t] || ROAD_CLASSES.road).rank;
@@ -34,17 +46,31 @@ const DEBUG = /[?&]debug\b/.test(location.search);
 /** Road data is requested this far around the car (metres). */
 const ROAD_MARGIN = 450;
 
+/** First `metres` of a [lng, lat] polyline (for sprint race lines). */
+function cutCoords(coords, metres) {
+  const out = [coords[0]];
+  let d = 0;
+  for (let i = 1; i < coords.length && d < metres; i++) {
+    d += distM(...coords[i - 1], ...coords[i]);
+    out.push(coords[i]);
+  }
+  return out;
+}
+
 export class Game {
   constructor(el) {
     this.el = el;
     this.settings = loadSettings();
     if (!CAR_TYPES[this.settings.car]) this.settings.car = 'hatchback';
-    this.state = 'menu'; // 'menu' | 'driving'
-    this.running = false; // a drive session exists (for Resume)
+    this.state = 'menu'; // 'menu' | 'loading' | 'driving'
+    this.mode = null; // null | 'free' | 'race'
+    this.race = null;
     this.damage = 0;
     this.road = { inBounds: false, surface: 'road', way: null, impact: 0 };
     this.loader = new RoadLoader('./roads/');
+    this.traffic = new TrafficManager();
     this.roadsGen = 0;
+    this.obstacles = [];
 
     const city = cityById(this.settings.city);
     this.mapView = new MapView(el.map, {
@@ -58,18 +84,23 @@ export class Game {
 
     this.input = new InputManager(el.touch);
     this.hud = new Hud(el.hud);
+    this.minimap = new Minimap(el.hud);
+    this.raceHud = new RaceHud(el.hud);
     this.menu = new Menu(el.menu, el.topbar, this.settings, {
-      onStart: () => this.start(),
+      onStart: () => this.startFree(),
+      onResume: () => this.resume(),
+      onStartRace: (opts) => this.startRace(opts),
       onSettings: (key) => this.applySettings(key),
       onPause: () => this.pause(),
       onCamera: () => this.cycleCamera(),
       onRespawn: () => this.respawn(),
-      isRunning: () => this.running,
+      isRunning: () => this.mode,
     });
 
     this.cam = { bearing: city.heading, zoom: CAMERA.zoomStill, pitch: 0, look: 0, screenY: 0.5 };
     this._spawnAt(city);
     this.overlay = new Overlay(el.overlay, this.mapView, this.frame);
+    this.boxes = new BoxRenderer(this.overlay);
 
     this.applySettings();
     this._bindKeys();
@@ -90,22 +121,27 @@ export class Game {
 
   /* ---------------- session control ---------------- */
 
-  /** (Re)create the local frame, road network and player car at a city. */
-  _spawnAt(city) {
-    this.city = city;
-    this.frame = new LocalFrame(city.lng, city.lat);
+  /**
+   * (Re)create the local frame, road network and player car at a place.
+   * @param {{id:string, name:string, lng:number, lat:number, heading:number}} place
+   */
+  _spawnAt(place) {
+    this.city = place;
+    this.frame = new LocalFrame(place.lng, place.lat);
     if (this.overlay) this.overlay.frame = this.frame;
     this.roads = new RoadNetwork(this.frame);
+    this.traffic.reset(this.roads);
     this.roadsGen++;
     this.roadFeatures = [];
     this._roadsDirty = true;
     this.needsSnap = true;
-    this.spawn = { x: 0, y: 0, heading: city.heading * DEG };
+    this.spawn = { x: 0, y: 0, heading: place.heading * DEG };
     this.player = new Vehicle(CAR_TYPES[this.settings.car], 0, 0, this.spawn.heading);
     this._carChanged();
     this.road.inBounds = false;
     this.road.way = null;
-    this.menu.setPlace(`${city.name} · Free Drive`);
+    this._placeText = '';
+    this.menu.setPlace(place.name);
     this._requestRoads(0, 0);
   }
 
@@ -124,10 +160,12 @@ export class Game {
     this.hud.setDamage(0);
   }
 
-  start() {
-    if (!this.running || this.city.id !== this.settings.city) {
+  /** Free Drive in the selected city (resumes if already there). */
+  startFree() {
+    if (this.mode === 'race') this._endRace();
+    if (this.mode !== 'free' || this.city.id !== this.settings.city) {
       this._spawnAt(cityById(this.settings.city));
-      this.running = true;
+      this.mode = 'free';
     } else if (this.player.spec.id !== this.settings.car) {
       this._setCar(this.settings.car);
     }
@@ -136,18 +174,101 @@ export class Game {
     this.menu.hide();
   }
 
+  resume() {
+    if (!this.mode) return this.startFree();
+    this.state = 'driving';
+    this.menu.hide();
+  }
+
   pause() {
+    if (this.state === 'loading') return;
     this.state = 'menu';
     this.menu.show();
   }
 
-  /** Put the car back on the nearest road, facing along it. */
+  /**
+   * Start a race: load the race line, move the world to the start, line
+   * up on the grid, wait for local roads, then count down.
+   */
+  async startRace(opts) {
+    const route = routeById(opts.routeId);
+    if (!route) return;
+    this._endRace();
+    this.lastRaceOpts = opts;
+    this.state = 'loading';
+    this.menu.hide();
+    this.raceHud.loading('Loading race route…');
+    let data;
+    try {
+      data = await loadRoute(route, (msg) => this.raceHud.loading(msg));
+    } catch (err) {
+      console.warn('[race] route failed:', err);
+      this.raceHud.loading(null);
+      this.state = 'menu';
+      this.menu.show();
+      this.hud.toast(`Couldn't load this route (${err.message}). Check your connection and try again.`, 6000);
+      return;
+    }
+    const [lng, lat] = data.coords[0];
+    const [lng2, lat2] = data.coords[Math.min(3, data.coords.length - 1)];
+    const heading = Math.atan2((lng2 - lng) * Math.cos(lat * DEG), lat2 - lat) / DEG;
+    this._spawnAt({ id: `race:${route.id}`, name: route.name, lng, lat, heading });
+    this.needsSnap = false;
+    this.race = new Race({
+      route,
+      data,
+      frame: this.frame,
+      variant: opts.variant,
+      laps: opts.laps,
+      opponents: opts.opponents,
+      playerCar: this.settings.car,
+    });
+    const g = this.race.playerGrid();
+    this.player.reset(g.x, g.y, g.heading);
+    this.cam.bearing = g.heading / DEG;
+    this._gridWait = 0;
+    this.mapView.setRoute(route.kind === 'p2p' && opts.variant === 'sprint' ? cutCoords(data.coords, SPRINT_METRES + 50) : data.coords);
+    this.mode = 'race';
+    this.raceHud.loading(null);
+    this.state = 'driving';
+  }
+
+  _endRace() {
+    if (!this.race) return;
+    this.race = null;
+    this.mapView.setRoute(null);
+    this.raceHud.hide();
+    if (this.mode === 'race') this.mode = null;
+  }
+
+  _onRaceFinish() {
+    const race = this.race;
+    const spec = this.player.spec;
+    const rank = addTime(race.board, { time: race.finishTime, car: spec.id, carName: spec.name, opponents: race.racers.length });
+    setTimeout(() => {
+      if (this.race !== race) return;
+      this.raceHud.showResults(race, rank, {
+        onRetry: () => this.startRace(this.lastRaceOpts),
+        onExit: () => {
+          this._endRace();
+          this.state = 'menu';
+          this.menu.show();
+        },
+      });
+    }, 1800);
+  }
+
+  /** Put the car back on the road: the race line in races, else the nearest road. */
   respawn() {
     const p = this.player;
-    const sp = this.roads.findSpawn(p.x, p.y, p.heading, 300) || this.roads.findSpawn(p.x, p.y, p.heading, 2000);
-    const target = sp || this.spawn;
+    let target;
+    if (this.race) {
+      target = this.race.respawnPoint();
+    } else {
+      target = this.roads.findSpawn(p.x, p.y, p.heading, 300) || this.roads.findSpawn(p.x, p.y, p.heading, 2000) || this.spawn;
+    }
     p.reset(target.x, target.y, target.heading);
-    this.road.inBounds = !!sp;
+    this.road.inBounds = false; // re-arm walls once back on the tarmac
     this.cam.bearing = target.heading / DEG;
   }
 
@@ -172,16 +293,17 @@ export class Game {
     }
     this.input.tilt.invert = s.invertTilt;
     if (key === 'buildings') this.mapView.setBuildings3d(s.buildings === '3d');
+    if (key === 'traffic' || key === undefined) this.traffic.setDensity(s.traffic);
     const touch = s.showTouch === 'on' || (s.showTouch === 'auto' && isTouchDevice());
     this.input.touch.setVisible(touch);
     this.el.root.classList.toggle('has-touch', touch);
 
     // Preview the chosen city / car / colour behind the menu before driving.
-    if (key === 'city' && !this.running && this.city.id !== s.city) {
+    if (key === 'city' && !this.mode && this.city.id !== s.city) {
       this._spawnAt(cityById(s.city));
       this.cam.bearing = this.city.heading;
     }
-    if (key === 'car' && !this.running) this._setCar(s.car);
+    if (key === 'car' && !this.mode) this._setCar(s.car);
     if (key === 'colour' && this.player.spec.id === s.car) {
       const spec = this.player.spec;
       this.playerColour = spec.colours[s.colour] || spec.colours[0];
@@ -194,12 +316,12 @@ export class Game {
       if (e.repeat) return;
       if (e.code === 'Escape' || e.code === 'KeyP') {
         if (this.state === 'driving') this.pause();
-        else this.start();
+        else if (this.state === 'menu') this.resume();
       } else if (this.state === 'driving') {
         if (e.code === 'KeyC') this.cycleCamera();
         else if (e.code === 'KeyR') this.respawn();
-      } else if (e.code === 'Enter' && !this.el.menu.hidden) {
-        this.start();
+      } else if (e.code === 'Enter' && !this.el.menu.hidden && this.state === 'menu') {
+        this.resume();
       }
     });
   }
@@ -214,7 +336,7 @@ export class Game {
     for (const key of cellsInBox(sw[0], sw[1], ne[0], ne[1])) {
       if (this.roads.loadedCells.has(key) || this.loader.isPending(key) || this.loader.isBackingOff(key)) continue;
       this.loader.load(key).then((ways) => {
-        if (gen !== this.roadsGen || !ways) return; // city changed meanwhile
+        if (gen !== this.roadsGen || !ways) return; // place changed meanwhile
         const added = this.roads.addWays(ways);
         this.roadFeatures.push(...waysToFeatures(added, wayHalfWidth, rankOf, labelOf));
         this._roadsDirty = true;
@@ -224,7 +346,7 @@ export class Game {
     }
   }
 
-  /** Snap the spawn to a real road once data for the start area arrives. */
+  /** Snap the Free Drive spawn to a real road once the start area loads. */
   _onRoadsLoaded() {
     if (!this.needsSnap) return;
     const p = this.player;
@@ -247,23 +369,56 @@ export class Game {
     const dt = Math.min((now - this._last) / 1000, 0.1);
     this._last = now;
     const p = this.player;
+    const race = this.race;
 
     if (this.state === 'driving') {
+      // Everything that can be hit or must be avoided this frame
+      const obs = this.obstacles;
+      obs.length = 0;
+      obs.push(p);
+      for (const a of this.traffic.agents) if (a.active) obs.push(a);
+      if (race) for (const r of race.racers) obs.push(r);
+
+      const ctl = this.input.read();
+      if (race?.locked) {
+        ctl.throttle = 0;
+        ctl.brake = 0;
+      } else if (race?.state === 'finished') {
+        ctl.throttle = 0;
+        ctl.brake = 0.4;
+      }
+
       const step = 1 / PERF.physicsHz;
       const opts = { walls: this.settings.boundaries !== 'free', loaded: this.roads.isLoadedAt(p.x, p.y) };
       this._acc += dt;
       let n = 0;
       let impact = 0;
-      const ctl = this.input.read();
       while (this._acc >= step && n++ < PERF.maxStepsPerFrame) {
         p.step(step, ctl, this.surfaces[this.road.surface]);
         applyRoadConstraint(p, this.roads, this.road, opts);
         impact = Math.max(impact, this.road.impact);
+        for (let i = 1; i < obs.length; i++) impact = Math.max(impact, collidePlayer(p, obs[i]));
         this._acc -= step;
       }
       if (n >= PERF.maxStepsPerFrame) this._acc = 0; // tab was frozen
       if (impact > 3) this._hurt(impact);
       this.hud.update(p);
+
+      this.traffic.update(dt, p, race ? [p, ...race.racers] : [p]);
+
+      if (race) {
+        if (race.state === 'grid') {
+          // Wait for the local roads so walls work from the start
+          this._gridWait += dt;
+          if (this.roads.isLoadedAt(p.x, p.y) || this._gridWait > 8) race.beginCountdown();
+        }
+        for (const ev of race.update(dt, p, obs)) {
+          if (ev === 'checkpoint') this.hud.toast(`Checkpoint ${race.nextCp}/${race.checkpoints.length}`, 1100);
+          else if (ev === 'lap') this.hud.toast(`Lap ${race.displayLap}/${race.laps}`, 1500);
+          else if (ev === 'finish') this._onRaceFinish();
+        }
+        this.raceHud.update(race);
+      }
     }
 
     // Keep road data flowing around the car (cheap: mostly cache hits).
@@ -281,6 +436,13 @@ export class Game {
       this._labelTimer = 0.3;
       this._updatePlace();
     }
+    this.minimap.setVisible(this.state === 'driving');
+    const driverView = this.state === 'driving' && !!CAMERA.modes[this.settings.camera]?.driver;
+    if (driverView !== this._driverView) {
+      this._driverView = driverView;
+      this.el.root.classList.toggle('driver-view', driverView);
+    }
+    this.minimap.update(dt, { player: p, roads: this.roads, race, traffic: this.traffic.agents });
 
     this._updateCamera(dt);
     this.mapView.repaint();
@@ -326,6 +488,8 @@ export class Game {
     const diff = wrapAngle((targetBearing - cam.bearing) * DEG) / DEG;
     cam.bearing += menu ? diff : diff * smoothing(CAMERA.bearingFollow, dt);
 
+    if (mode.driver && !menu) return this._driverCamera(dt, mode);
+
     const speed = Math.abs(car.forwardSpeed);
     const t = clamp(speed / CAMERA.zoomSpeedRef, 0, 1);
     const screenAdj = clamp(Math.log2(window.innerHeight / CAMERA.refViewportHeight), -0.5, 1.2);
@@ -344,13 +508,91 @@ export class Game {
     this.mapView.setCamera(this.frame.toLngLat(cx, cy), cam.bearing, cam.zoom, cam.pitch, cam.screenY);
   }
 
+  /**
+   * Driver view: put MapLibre's camera at the driver's eye.
+   * MapLibre places the camera `1.5 × screen height` pixels from the map
+   * centre (its default 36.87° field of view), along the pitch angle. So
+   * for an eye height e and pitch p, the camera sits d = e / cos p metres
+   * from the centre. We choose the zoom that makes that distance d, and put
+   * the centre d·sin p metres ahead of the car.
+   */
+  _driverCamera(dt, mode) {
+    const car = this.player, cam = this.cam;
+    // Bearing locked to the car (the driver's head turns with it)
+    const diff = wrapAngle(car.heading - cam.bearing * DEG) / DEG;
+    cam.bearing += diff * smoothing(18, dt);
+    cam.pitch += (mode.pitch - cam.pitch) * smoothing(5, dt);
+    const p = cam.pitch * DEG;
+    const eye = (car.spec.height || 1.4) * 0.82;
+    const d = eye / Math.max(0.05, Math.cos(p));
+    const metresPerWorldPx = 40075016.686 * Math.cos(this.frame.lat0 * DEG) / 512;
+    const targetZoom = Math.log2((metresPerWorldPx * 1.5 * window.innerHeight) / d);
+    cam.zoom += (targetZoom - cam.zoom) * smoothing(6, dt);
+    cam.screenY += (0.5 - cam.screenY) * smoothing(6, dt);
+    const b = cam.bearing * DEG;
+    const ahead = d * Math.sin(p) + 1.2; // eye slightly forward of the car centre
+    const cx = car.x + Math.sin(b) * ahead, cy = car.y + Math.cos(b) * ahead;
+    this.mapView.setCamera(this.frame.toLngLat(cx, cy), cam.bearing, cam.zoom, cam.pitch, cam.screenY);
+  }
+
+  /** Driver view drawing: 3D blocks far-to-near, then the cockpit. */
+  _drawDriver() {
+    const o = this.overlay, p = this.player, race = this.race;
+    const bx = this.boxes;
+    const view = this.cam.bearing * DEG;
+    bx.begin(p.x, p.y, view, this.cam.pitch * DEG);
+    const items = [];
+    const consider = (v, colour) => {
+      const dx = v.x - p.x, dy = v.y - p.y;
+      if (dx * dx + dy * dy > 250 * 250) return;
+      const depth = bx.depth(v.x, v.y);
+      if (depth > 2) items.push({ depth, draw: () => bx.vehicle(v, colour) });
+    };
+    for (const a of this.traffic.agents) if (a.active) consider(a, a.colour);
+    if (race) for (const r of race.racers) consider(r, r.colour);
+    if (race && race.nextCp < race.checkpoints.length && race.state !== 'finished') {
+      const cp = race.checkpointPoint(race.nextCp);
+      const depth = bx.depth(cp.x, cp.y);
+      if (depth > 2 && depth < 300) {
+        const hit = this.roads.query(cp.x, cp.y, 30);
+        const half = hit.found ? Math.max(hit.way.half, 4) : 6;
+        items.push({ depth, draw: () => bx.gate(cp.x, cp.y, cp.heading, half, race.nextCp === race.checkpoints.length - 1) });
+      }
+    }
+    items.sort((a, b) => b.depth - a.depth);
+    for (const it of items) it.draw();
+    o.drawCockpit(this.playerColour, p.steer, p.spec);
+  }
+
   _draw() {
+    const mode = CAMERA.modes[this.settings.camera];
+    if (mode?.driver && this.state === 'driving') {
+      this.overlay.clear();
+      return this._drawDriver();
+    }
     const o = this.overlay;
     const p = this.player;
+    const view = { viewX: p.x, viewY: p.y, viewHeading: this.cam.bearing * DEG };
     o.clear();
-    if (DEBUG) {
-      o.drawRoads(this.roads, p.x, p.y, this.cam.bearing * DEG, true);
+    if (DEBUG) o.drawRoads(this.roads, p.x, p.y, view.viewHeading, true);
+
+    const race = this.race;
+    if (race && race.nextCp < race.checkpoints.length && race.state !== 'finished') {
+      const cp = race.checkpointPoint(race.nextCp);
+      if (Math.hypot(cp.x - p.x, cp.y - p.y) < 300) {
+        const hit = this.roads.query(cp.x, cp.y, 30);
+        const half = hit.found ? Math.max(hit.way.half, 4) : 6;
+        o.drawGate(cp.x, cp.y, cp.heading, half, { ...view, finish: race.nextCp === race.checkpoints.length - 1 });
+      }
     }
+    // Cull anything far away or behind the camera (it would project wildly).
+    const fx = Math.sin(view.viewHeading), fy = Math.cos(view.viewHeading);
+    const visible = (v) => {
+      const dx = v.x - p.x, dy = v.y - p.y;
+      return dx * dx + dy * dy < 220 * 220 && dx * fx + dy * fy > -45;
+    };
+    for (const a of this.traffic.agents) if (a.active && visible(a)) o.drawCar(a, a.colour);
+    if (race) for (const r of race.racers) if (visible(r)) o.drawCar(r, r.colour);
     o.drawCar(p, this.playerColour);
   }
 }
